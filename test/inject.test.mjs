@@ -69,8 +69,9 @@ function run() {
 {
   const { win, logs } = run();
   assert.notEqual(win.WebSocket.name, 'FakeWebSocket', 'WebSocket must be wrapped');
-  assert.ok(logs.some((l) => l.includes('build')), 'it should announce its build');
-  assert.ok(logs[0].includes('qz-'), `build stamp should be first: ${logs[0]}`);
+  // Match the shape, not the name — the stamp changes with every build, and a
+  // test that has to be edited alongside it teaches nothing.
+  assert.match(logs[0], /build \d{4}-\d{2}-\d{2}/, `build stamp should come first: ${logs[0]}`);
   console.log('PASS  inject.js installs and announces its build');
 }
 
