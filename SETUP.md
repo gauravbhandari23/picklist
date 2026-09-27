@@ -102,49 +102,49 @@ Look in the M-Direct sidebar for a **Print**, **Manifest** or
 **Invoice & Ship Label** section. Many seller portals can download every label
 for a picklist in one go. If M-Direct can, use that instead — nothing to install.
 
-### B1. Install clawPDF
+### B1. Install PDF24 Creator
 
-Download from **github.com/clawsoftware/clawPDF** → Releases.
+Download from **tools.pdf24.org/en/creator**.
 
-It is the open-source fork of PDFCreator: same auto-save features, no bundled
-extras in the installer.
+Why this one and not the alternatives:
 
-clawPDF is a printer with no paper. Printing to it produces a PDF file.
+| | PDF24 | clawPDF | PDFCreator |
+|---|---|---|---|
+| Actively maintained | **yes — v11.30.1, Apr 2026** | no — last release May 2023 | yes |
+| Adware / bundled extras | none | none | installer offers extras |
+| Free for commercial use | yes, no licence | yes (AGPL) | free tier |
 
-### B2. Profile settings
+A PDF printer installs a system-level driver and Windows service, so being
+currently maintained matters more here than it would for an ordinary app.
+clawPDF is good, auditable code, but three years without security patches is
+not worth it for a convenience feature.
 
-Open clawPDF → **Profile Settings**.
+PDF24 is a printer with no paper. Printing to it produces a PDF file.
 
-On the **Auto-Save** tab:
+### B2. Turn on automatic saving
 
-| Setting | Value |
-|---|---|
-| **Enable automatic saving** | **ON** ← this is what removes the dialog |
-| **Ensure unique filenames** | **ON** ← this is what stops names repeating |
-| **Target folder** | `C:\Users\<YourName>\Documents\Labels` |
+Open **PDF24 Creator** and find the **auto save** mode in its settings, then set:
 
-On the **Save** tab:
+- automatic saving **on**
+- the target folder, e.g. `C:\Users\<YourName>\Documents\Labels`
+- do not open the PDF after saving
 
-| Setting | Value |
-|---|---|
-| Open with standard viewer after conversion | **OFF** |
+The exact labels move between versions, so go by meaning rather than by an
+exact string. If you cannot find it, say so and it can be walked through
+screen by screen.
 
-**Ensure unique filenames** appends a number when a name already exists, so you
-do not need a clever filename pattern — a plain name like `label` is enough and
-you will get `label.pdf`, `label_2.pdf`, `label_3.pdf` and so on.
+**Hold ALT to break out of auto-save for one print.** That is PDF24's own
+feature and it is worth remembering: when you actually want to choose where a
+PDF goes, hold ALT while printing and the normal dialog comes back. Everything
+else keeps saving silently. It removes the main drawback of this whole setup.
 
-If you want a folder per day, clawPDF supports **tokens** in the folder and
-filename boxes. Use the token list in the UI rather than typing one from memory
-— different versions use different syntax (`<DateTime>` in some, `%date%` in
-others), and the picker always inserts the right one for your build.
-
-### B3. Make clawPDF the Windows default printer
+### B3. Make PDF24 the Windows default printer
 
 Windows → **Settings → Bluetooth & devices → Printers & scanners**
 
 1. Turn **OFF** "Let Windows manage my default printer"
    ← easy to miss, and Windows will undo your choice if you leave it on
-2. Click **clawPDF** → **Set as default**
+2. Click the **PDF24** printer → **Set as default**
 
 ### B4. Add the flag to your Chrome shortcut
 
@@ -197,9 +197,10 @@ the printer in one job.
 
 ### Things to know
 
-- **clawPDF becomes your default printer.** Printing from Word or Excel without
+- **PDF24 becomes your default printer.** Printing from Word or Excel without
   looking will make a PDF instead of paper. The dialog still appears in normal
-  programs so you can pick a different printer — you just have to notice.
+  programs so you can pick a different printer — and holding **ALT** while
+  printing breaks auto-save for that one job.
 - **Downloads are unaffected.** Only printing changes.
   `Save Print Output As` is a print; `Save As` is a download.
 - **There is no confirmation any more.** Glance at the folder every 10 orders

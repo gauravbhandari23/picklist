@@ -404,15 +404,20 @@ error on their own.
   Documents. Rejected as worse than the alternative.
 - **Removing the two Save dialogs — in code.** This is a printing problem, not
   a browser one, and the extension plays no part in it. It is solved entirely
-  with settings: clawPDF as the default printer with auto-save on, plus
+  with settings: PDF24 Creator as the default printer with auto-save on, plus
   `--kiosk-printing` on the Chrome shortcut. See [SETUP.md](SETUP.md).
+
+  PDF24 over clawPDF: clawPDF is good auditable AGPL code, but its last release
+  was May 2023. A PDF printer installs a system-level driver and service, so a
+  currently-maintained one matters. PDF24 (v11.30.1, April 2026) carries no
+  adware, is free for commercial use, and can break auto-save for a single job
+  by holding ALT.
 
   Worth recording why no code could do it better: Chrome's silent printing
   always targets the **system default printer** and cannot be pointed at
   Chrome's own "Save as PDF", so a virtual PDF printer is unavoidable. And an
   extension could not improve the filenames either — `chrome.downloads` may
-  only write inside the Downloads folder, never Documents. clawPDF's
-  "Ensure unique filenames" already guarantees no collisions.
+  only write inside the Downloads folder, never Documents.
 - **Packing history / CSV export.** Sounds useful, would never be opened.
 
 ---
