@@ -120,23 +120,26 @@ PDFCreator is a printer with no paper. Printing to it produces a PDF file.
 
 ### B2. Turn on automatic saving
 
-Open PDFCreator → **Profiles** (or Settings → Profiles) and pick the default
-profile. You are looking for three things:
+It is **not a checkbox**, and the words "auto save" do not appear on it — it is a
+switch with two modes. That is why it is hard to find.
 
-| Setting | Value |
-|---|---|
-| **Automatic saving** (an "Auto-Save" action on the profile) | **ON** ← this removes the dialog |
-| **Target folder** | `C:\Users\<YourName>\Documents\Labels` |
-| **Open the document after saving** | **OFF** |
+1. Open PDFCreator → click **Profiles**
+2. On the left-hand side, open the **Save** tab
+3. Set the **switch** to **Automatic** ← this is the setting
+4. In the **Filename** field, include a `<DateTime>` token so names never repeat
+5. In **target folder** just below it, set
+   `C:\Users\<YourName>\Documents\Labels` (or use the **…** button)
+6. Go to the **Printer** tab. Find your printer in the list, and in the
+   **Profile** column pick your autosave profile from the dropdown.
+7. Click **Save**
 
-Set the **filename** with the token buttons next to the box rather than typing
-tokens from memory — the syntax differs between versions and the picker always
-inserts the right one. A date plus a counter, e.g. time + an incrementing
-number, gives names that can never repeat.
+⚠️ **Step 6 is the one everyone misses.** A profile that is not attached to a
+printer is ignored completely — printing carries on prompting and nothing looks
+wrong in the settings. If steps 1–5 seem right but the dialog still appears,
+this is why.
 
-The exact wording of these options moves between PDFCreator versions, so go by
-meaning rather than an exact string. If you cannot find one, say what you see on
-screen and it can be walked through.
+Also worth setting while you are in the profile: turn **off** opening the
+document after saving, under the same Save section.
 
 ### B2a. Prove it works before doing the rest
 
