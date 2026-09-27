@@ -394,6 +394,7 @@ document.addEventListener('drop', (e) => {
 });
 
 const AUTOSAVE_PROBLEMS = {
+  'no-body': 'Could not read that document from the page — save it by hand.',
   html: 'Myntra returned a web page, not a PDF — save that one by hand.',
   'json-without-pdf': 'Myntra returned data, not a PDF — save that one by hand.',
   'not-a-pdf': 'That download was not a PDF — save it by hand.',

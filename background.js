@@ -21,7 +21,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     relayToPackTab(msg).then(sendResponse);
     return true; // keep the channel open for the async reply
   }
-  if (msg?.type === 'LABEL_URL') {
+  if (msg?.type === 'LABEL_DOC') {
     saveLabel(msg).catch(() => {});
     return false;
   }
@@ -47,6 +47,11 @@ async function relayToPackTab(msg) {
 
   try {
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+    // The page-world watcher has to go in too, or a tab that was already open
+    // fills SKUs fine but never reports its labels.
+    await chrome.scripting
+      .executeScript({ target: { tabId: tab.id }, files: ['inject.js'], world: 'MAIN' })
+      .catch(() => {});
     return await chrome.tabs.sendMessage(tab.id, msg);
   } catch {
     return { ok: false, reason: 'no-content-script' };
@@ -77,27 +82,26 @@ function alreadyHandled(url) {
   return false;
 }
 
-async function saveLabel({ url, packet }) {
+async function saveLabel({ url, packet, body }) {
   const kind = classifyLabelUrl(url);
   if (!kind) return;
 
   const { autosave } = await chrome.storage.local.get('autosave');
-  if (!autosave) return; // off means off — the page prints as it always did
+  if (!autosave) return; // off means off — the page behaves exactly as before
 
   if (alreadyHandled(url)) return;
 
   try {
-    // Same request the page just made, with the same session cookies.
-    const res = await fetch(url, { credentials: 'include' });
-    if (!res.ok) {
-      tellPanel({ type: 'AUTOSAVE_RESULT', ok: false, kind, reason: `http-${res.status}` });
+    // The page's own response, copied. Re-requesting the URL from here would
+    // fail: Myntra's API wants custom headers the page sends and we do not.
+    if (!body) {
+      tellPanel({ type: 'AUTOSAVE_RESULT', ok: false, kind, reason: 'no-body' });
       return;
     }
-
-    const contentType = res.headers.get('content-type') ?? '';
-    const bytes = new Uint8Array(await res.arrayBuffer());
+    const bytes = base64ToBytes(body);
     // Only worth decoding as text if it might be JSON or HTML.
     const text = bytes.length < 4_000_000 ? new TextDecoder().decode(bytes) : '';
+    const contentType = '';
 
     const plan = planSave({
       contentType,

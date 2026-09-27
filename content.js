@@ -96,8 +96,10 @@ if (!window.__myntraPicklistPanel) {
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     const msg = event.data;
-    if (msg?.__myntraPicklistPanel !== true || msg.type !== 'LABEL_URL') return;
-    chrome.runtime.sendMessage({ type: 'LABEL_URL', url: msg.url, packet: msg.packet }).catch(() => {});
+    if (msg?.__myntraPicklistPanel !== true || msg.type !== 'LABEL_DOC') return;
+    chrome.runtime
+      .sendMessage({ type: 'LABEL_DOC', url: msg.url, packet: msg.packet, body: msg.body })
+      .catch(() => {});
   });
 
   // An input's value changes without any DOM mutation, so polling is the honest

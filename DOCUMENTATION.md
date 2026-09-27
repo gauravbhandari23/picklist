@@ -433,10 +433,16 @@ GET .../api/mdirect/orders/getShippingLabelForSellerPacketV2/<store>?...&sellerO
 GET .../api/mdirect/orders/getPacketInvoice/<store>?...&sellerOrderId=<id>
 ```
 
-So there is no need to print at all. `inject.js` runs in the page's world —
-the only place the page's own `fetch`/`XHR` can be seen — and reports those two
-URLs. `background.js` fetches the same documents with the session cookies and
-saves them with `chrome.downloads`.
+So there is no need to print at all. `inject.js` runs in the page's world — the
+only place the page's own `fetch`/`XHR` can be seen — clones each of those two
+responses and passes **the body** out. `background.js` verifies it is a PDF and
+saves it with `chrome.downloads`.
+
+**The body, not the URL.** Re-requesting the URL from the service worker looks
+tidier but fails: Myntra's API wants `x-myntra-app-name`, `x-myntra-client-id`
+and `x-myntra-mdirect-service` headers as well as the `erp.at` cookie, and an
+extension fetch sends none of them — it would earn a 401 and save nothing. The
+page has already fetched it correctly, so its response is copied instead.
 
 This is better than the printing route in every way that matters: no dialog to
 suppress, no software to install, no machine-wide printer change, and the packet
@@ -453,6 +459,10 @@ Constraints worth remembering:
   reason rather than saved under a `.pdf` name.
 - It is **off by default** and gated by the Autosave tick-box. Off means the
   page behaves exactly as it always did.
+- A tab opened *before* the extension loaded needs **both** scripts injected on
+  demand — `content.js` and `inject.js` in the MAIN world. Injecting only the
+  first fills SKUs fine but never sees a label, which would look like autosave
+  silently not working.
 
 ## 11. Ideas not yet built
 
