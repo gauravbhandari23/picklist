@@ -110,7 +110,15 @@ if (!window.__myntraPicklistPanel) {
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     const msg = event.data;
-    if (msg?.__myntraPicklistPanel !== true || msg.type !== 'LABEL_DOC') return;
+    if (msg?.__myntraPicklistPanel !== true) return;
+    if (msg.type === 'LABEL_FAILED') {
+      console.log('[picklist] label request failed for good:', msg.detail);
+      chrome.runtime
+        .sendMessage({ type: 'LABEL_FAILED', url: msg.url, detail: msg.detail })
+        .catch(() => {});
+      return;
+    }
+    if (msg.type !== 'LABEL_DOC') return;
     console.log('[picklist] relaying label document to the extension');
     chrome.runtime
       .sendMessage({

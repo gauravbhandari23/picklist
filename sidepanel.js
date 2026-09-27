@@ -403,6 +403,7 @@ document.addEventListener('drop', (e) => {
 });
 
 const AUTOSAVE_PROBLEMS = {
+  'myntra-error': "Myntra's server would not send it. Re-download it from the portal.",
   'no-body': 'Could not read that document from the page — save it by hand.',
   html: 'Myntra returned a web page, not a PDF — save that one by hand.',
   'json-without-pdf': 'Myntra returned data, not a PDF — save that one by hand.',
@@ -419,7 +420,10 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === 'AUTOSAVE_RESULT') {
     const what = msg.kind === 'invoice' ? 'Bill' : 'Shipping label';
     if (msg.ok) status(`${what} saved: ${msg.filename.split('/').pop()}`);
-    else status(`${what} not saved. ${AUTOSAVE_PROBLEMS[msg.reason] ?? msg.reason}`, true);
+    else {
+      const why = AUTOSAVE_PROBLEMS[msg.reason] ?? msg.reason;
+      status(`${what} not saved. ${why}${msg.detail ? ` (${msg.detail})` : ''}`, true);
+    }
   }
 });
 

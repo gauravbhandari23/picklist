@@ -26,6 +26,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     saveLabel(msg).catch(() => {});
     return false;
   }
+  if (msg?.type === 'LABEL_FAILED') {
+    const kind = classifyLabelUrl(msg.url) ?? 'document';
+    tellPanel({ type: 'AUTOSAVE_RESULT', ok: false, kind, reason: 'myntra-error', detail: msg.detail });
+    return false;
+  }
   return false;
 });
 
