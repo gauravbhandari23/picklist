@@ -15,10 +15,15 @@
   // Deliberately noisy: when autosave does not fire, these lines in the page
   // console are the fastest way to see whether this script ran at all, whether
   // it saw the request, and how the response came back.
+  // Stamped so the console says which build a tab is actually running. A tab
+  // that was not reloaded keeps the previous inject.js, and the symptom — some
+  // log lines present, others missing — is otherwise very hard to read.
+  const BUILD = '2026-09-27c qz-refuse';
+
   const where =
     window === window.top ? 'top' : `frame<${String(location.href).slice(0, 70)}>`;
   const log = (...a) => console.log('[picklist]', where, ...a);
-  log('watching for label requests');
+  log('build', BUILD, '— watching for label requests. autosave starts OFF until the panel says otherwise');
 
   const LABEL_RE = /getShippingLabelForSellerPacket|getPacketInvoice/i;
   const PACKET_RE = /ready-to-ship/i;
@@ -84,7 +89,7 @@
     if (event.source !== window) return;
     if (event.data?.__myntraPicklistPanel !== true || event.data.type !== 'AUTOSAVE_STATE') return;
     autosaveOn = event.data.on === true;
-    log('autosave is', autosaveOn ? 'ON' : 'OFF');
+    log('autosave is', autosaveOn ? 'ON — QZ Tray will be refused' : 'OFF — QZ Tray left alone');
   });
 
   // Myntra prints the label and the bill after packing, which is what raises
@@ -227,7 +232,7 @@
         }
         if (!window.__myntraPrintServiceSeen) {
           window.__myntraPrintServiceSeen = true;
-          log('*** page is contacting a local print service (QZ Tray). autosave off, leaving it alone. captured recently =', fresh);
+          log('*** page is contacting QZ Tray and autosave is OFF, so it is left alone. captured recently =', fresh);
         }
       }
       const socket = new OriginalWebSocket(url, ...rest);
