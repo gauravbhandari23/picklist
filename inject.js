@@ -104,7 +104,7 @@
   // The two Save dialogs did not come from window.print() in this page, so the
   // document must be opened somewhere else to be printed. Watch for that, and
   // once autosave has the document, do not open it at all.
-  const origOpen = window.open;
+  const origWindowOpen = window.open;
   window.open = function (url, ...rest) {
     const target = String(url ?? '');
     log('window.open ->', target || '(no url)');
@@ -124,7 +124,7 @@
         document: { write() {}, close() {}, open() {} },
       };
     }
-    return origOpen.call(this, url, ...rest);
+    return origWindowOpen.call(this, url, ...rest);
   };
 
   // And report anything embedded that points at a label, so we can see whether
