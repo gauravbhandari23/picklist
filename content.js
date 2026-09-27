@@ -85,6 +85,10 @@ if (!window.__myntraPicklistPanel) {
   }
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === 'DIAG') {
+      console.log('[picklist]', ...msg.parts);
+      return false;
+    }
     const target = TARGETS[msg?.type];
     if (!target) return false;
     fill(target, msg.value, sendResponse);
@@ -99,7 +103,13 @@ if (!window.__myntraPicklistPanel) {
     if (msg?.__myntraPicklistPanel !== true || msg.type !== 'LABEL_DOC') return;
     console.log('[picklist] relaying label document to the extension');
     chrome.runtime
-      .sendMessage({ type: 'LABEL_DOC', url: msg.url, packet: msg.packet, body: msg.body })
+      .sendMessage({
+        type: 'LABEL_DOC',
+        url: msg.url,
+        packet: msg.packet,
+        body: msg.body,
+        contentType: msg.contentType,
+      })
       .catch(() => {});
   });
 

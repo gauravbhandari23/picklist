@@ -73,6 +73,16 @@ const base64ToBytes = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 // Tell the panel how it went. The panel may be closed; that is fine.
 const tellPanel = (detail) => chrome.runtime.sendMessage(detail).catch(() => {});
 
+// Also log into the pack page's console. The service worker has a console of
+// its own, but it is buried behind chrome://extensions, and this is where
+// anyone debugging is already looking.
+async function tellPage(...parts) {
+  const tabs = await chrome.tabs.query({ url: PACK_URL }).catch(() => []);
+  for (const tab of tabs) {
+    chrome.tabs.sendMessage(tab.id, { type: 'DIAG', parts }).catch(() => {});
+  }
+}
+
 const handled = new Map();
 function alreadyHandled(url) {
   const now = Date.now();
@@ -82,14 +92,23 @@ function alreadyHandled(url) {
   return false;
 }
 
-async function saveLabel({ url, packet, body }) {
+async function saveLabel({ url, packet, body, contentType = '' }) {
   const kind = classifyLabelUrl(url);
-  if (!kind) return;
+  if (!kind) {
+    tellPage('ignored, not a label URL:', url);
+    return;
+  }
 
   const { autosave } = await chrome.storage.local.get('autosave');
-  if (!autosave) return; // off means off — the page behaves exactly as before
+  if (!autosave) {
+    tellPage(kind, '- autosave is OFF, nothing saved');
+    return;
+  }
 
-  if (alreadyHandled(url)) return;
+  if (alreadyHandled(url)) {
+    tellPage(kind, '- already handled in the last minute, skipped');
+    return;
+  }
 
   try {
     // The page's own response, copied. Re-requesting the URL from here would
@@ -101,7 +120,8 @@ async function saveLabel({ url, packet, body }) {
     const bytes = base64ToBytes(body);
     // Only worth decoding as text if it might be JSON or HTML.
     const text = bytes.length < 4_000_000 ? new TextDecoder().decode(bytes) : '';
-    const contentType = '';
+    tellPage(kind, '- received', bytes.length, 'bytes, content-type:', contentType || '(none)',
+      '- starts with:', JSON.stringify(text.slice(0, 80)));
 
     const plan = planSave({
       contentType,
@@ -113,6 +133,7 @@ async function saveLabel({ url, packet, body }) {
 
     if (!plan.ok) {
       // Never save something that is not a PDF under a .pdf name.
+      tellPage(kind, '- NOT SAVED, reason:', plan.reason);
       tellPanel({ type: 'AUTOSAVE_RESULT', ok: false, kind, reason: plan.reason, contentType });
       return;
     }
@@ -131,8 +152,10 @@ async function saveLabel({ url, packet, body }) {
       saveAs: false,
     });
 
+    tellPage(kind, '- SAVED as', filename);
     tellPanel({ type: 'AUTOSAVE_RESULT', ok: true, kind, filename });
   } catch (err) {
+    tellPage(kind, '- FAILED:', err?.message ?? String(err));
     tellPanel({ type: 'AUTOSAVE_RESULT', ok: false, kind, reason: err?.message ?? 'failed' });
   }
 }

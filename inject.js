@@ -66,9 +66,9 @@
     return btoa(binary);
   };
 
-  const send = (url, body) => {
-    log('label document', { url: absolute(url), bytes: body ? body.length : 0, packet });
-    post({ type: 'LABEL_DOC', url: absolute(url), packet, body: body ?? null });
+  const send = (url, body, contentType = '') => {
+    log('label document', { url: absolute(url), bytes: body ? body.length : 0, contentType, packet });
+    post({ type: 'LABEL_DOC', url: absolute(url), packet, body: body ?? null, contentType });
   };
 
   const origFetch = window.fetch;
@@ -83,11 +83,12 @@
           res.clone().text().then(notePacket).catch(() => {});
         } else if (LABEL_RE.test(url)) {
           // clone() so the page still reads its own response normally
+          const contentType = res.headers.get('content-type') ?? '';
           res
             .clone()
             .arrayBuffer()
-            .then((buf) => send(url, toBase64(buf)))
-            .catch(() => send(url, null));
+            .then((buf) => send(url, toBase64(buf), contentType))
+            .catch(() => send(url, null, contentType));
         }
       } catch {
         /* never let this break the page's own request */
@@ -115,16 +116,17 @@
         }
         if (!LABEL_RE.test(url)) return;
         // responseType decides what is readable; cover the usual three.
-        if (this.response instanceof ArrayBuffer) send(url, toBase64(this.response));
+        const xhrType = this.getResponseHeader('content-type') ?? '';
+        if (this.response instanceof ArrayBuffer) send(url, toBase64(this.response), xhrType);
         else if (typeof Blob !== 'undefined' && this.response instanceof Blob) {
           this.response
             .arrayBuffer()
-            .then((buf) => send(url, toBase64(buf)))
-            .catch(() => send(url, null));
+            .then((buf) => send(url, toBase64(buf), xhrType))
+            .catch(() => send(url, null, xhrType));
         }
         else if (typeof this.responseText === 'string') {
-          send(url, btoa(unescape(encodeURIComponent(this.responseText))));
-        } else send(url, null);
+          send(url, btoa(unescape(encodeURIComponent(this.responseText))), xhrType);
+        } else send(url, null, xhrType);
       } catch {
         /* same — stay out of the page's way */
       }
