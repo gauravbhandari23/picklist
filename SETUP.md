@@ -130,6 +130,10 @@ To have them somewhere else, change Chrome's own download location:
 Also make sure **"Ask where to save each file before downloading"** is **off**,
 or Chrome will prompt for every file.
 
+The two documents do not arrive in the same shape — the bill is a plain PDF
+while the label comes wrapped in a MIME envelope — so the label is unwrapped
+before saving. Both end up as ordinary PDFs.
+
 ### If a document cannot be saved
 
 The panel says so and never saves a non-PDF under a `.pdf` name — for example

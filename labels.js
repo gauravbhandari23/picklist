@@ -48,9 +48,48 @@ export function labelFilename({ kind, packetId, orderId, at = new Date() }) {
 }
 
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46]; // %PDF
+const PDF_EOF = [0x25, 0x25, 0x45, 0x4f, 0x46]; // %%EOF
 
 export function looksLikePdf(bytes) {
   return PDF_MAGIC.every((b, i) => bytes[i] === b);
+}
+
+function findBytes(haystack, needle, from = 0) {
+  outer: for (let i = from; i <= haystack.length - needle.length; i += 1) {
+    for (let j = 0; j < needle.length; j += 1) if (haystack[i + j] !== needle[j]) continue outer;
+    return i;
+  }
+  return -1;
+}
+
+function findBytesLast(haystack, needle) {
+  outer: for (let i = haystack.length - needle.length; i >= 0; i -= 1) {
+    for (let j = 0; j < needle.length; j += 1) if (haystack[i + j] !== needle[j]) continue outer;
+    return i;
+  }
+  return -1;
+}
+
+/**
+ * Myntra returns the shipping label inside a MIME multipart envelope (MTOM):
+ *
+ *   --uuid:29af39c7-…
+ *   Content-Type: application/octet-stream
+ *   Content-Transfer-Encoding: binary
+ *   Content-ID: <1>
+ *
+ *   %PDF-1.5 …
+ *
+ * Rather than parse MIME, cut from the PDF header to the last %%EOF — every
+ * PDF ends with that marker, and the last one is the end of the document even
+ * when the file has been incrementally updated.
+ */
+export function extractEmbeddedPdf(bytes) {
+  const start = findBytes(bytes, PDF_MAGIC);
+  if (start === -1) return null;
+  const eof = findBytesLast(bytes, PDF_EOF);
+  if (eof === -1 || eof < start) return bytes.subarray(start);
+  return bytes.subarray(start, eof + PDF_EOF.length);
 }
 
 // Some Myntra endpoints wrap the document as base64 inside JSON rather than
@@ -90,6 +129,13 @@ export function findBase64Pdf(text, decode) {
 export function planSave({ contentType = '', bytes, text, toBase64, fromBase64 }) {
   if (bytes?.length && looksLikePdf(bytes)) return { ok: true, base64: toBase64(bytes) };
 
+  // A PDF further in means an envelope around it — Myntra wraps the shipping
+  // label in MIME multipart while the invoice comes back bare.
+  if (bytes?.length) {
+    const inner = extractEmbeddedPdf(bytes);
+    if (inner && looksLikePdf(inner)) return { ok: true, base64: toBase64(inner), unwrapped: true };
+  }
+
   if (typeof text === 'string' && text.trim().startsWith('{')) {
     const found = findBase64Pdf(text, fromBase64);
     if (found) return { ok: true, base64: found };
@@ -114,6 +160,14 @@ export function describePayload({ bytes, text = '', contentType = '', fromBase64
 
   if (looksLikePdf(bytes)) {
     out.verdict = 'raw PDF';
+    return out;
+  }
+
+  const inner = extractEmbeddedPdf(bytes);
+  if (inner && looksLikePdf(inner)) {
+    out.verdict = 'PDF inside an envelope';
+    out.innerBytes = inner.length;
+    out.envelope = text.slice(0, 80);
     return out;
   }
 

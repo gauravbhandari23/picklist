@@ -127,3 +127,60 @@ const fromBase64 = (s) => new Uint8Array(Buffer.from(s, 'base64'));
 
   console.log('PASS  payload description names the verdict, the field and a preview');
 }
+
+/* 9. The shipping label arrives wrapped in MIME multipart, the invoice bare.
+      Built to match the real bytes seen on a live pack: the label began
+      "--uuid:29af39c7-…" with MIME headers before "%PDF-1.5". */
+{
+  const { extractEmbeddedPdf } = await import('../labels.js');
+
+  const pdfBody = Buffer.concat([
+    Buffer.from('%PDF-1.5\n%\xe2\xe3\xcf\xd3\n4 0 obj\n<</Subtype/Form>>\n', 'latin1'),
+    Buffer.from('trailer\n<</Size 5>>\nstartxref\n1234\n%%EOF', 'latin1'),
+  ]);
+  const wrapped = Buffer.concat([
+    Buffer.from(
+      '--uuid:29af39c7-fdd3-416c-9914-a00d74880081\r\n' +
+      'Content-Type: application/octet-stream\r\n' +
+      'Content-Transfer-Encoding: binary\r\n' +
+      'Content-ID: <1>\r\n\r\n', 'latin1'),
+    pdfBody,
+    Buffer.from('\r\n--uuid:29af39c7-fdd3-416c-9914-a00d74880081--\r\n', 'latin1'),
+  ]);
+
+  const bytes = new Uint8Array(wrapped);
+  assert.equal(looksLikePdf(bytes), false, 'the envelope is not itself a PDF');
+
+  const inner = extractEmbeddedPdf(bytes);
+  assert.ok(looksLikePdf(inner), 'the PDF inside must be found');
+  assert.equal(Buffer.compare(Buffer.from(inner), pdfBody), 0, 'exactly the PDF, no envelope either side');
+
+  // And planSave must now accept it rather than refusing.
+  const text = wrapped.toString('latin1');
+  const plan = planSave({ contentType: 'application/pdf', bytes, text, toBase64, fromBase64 });
+  assert.equal(plan.ok, true, 'the wrapped label must be saved');
+  assert.equal(plan.unwrapped, true, 'and recorded as having been unwrapped');
+  assert.equal(plan.base64, pdfBody.toString('base64'));
+  console.log('PASS  MIME-wrapped shipping label unwrapped to exactly its PDF');
+}
+
+/* 10. A bare PDF must still be taken as-is, never re-cut */
+{
+  const bare = Buffer.concat([Buffer.from('%PDF-1.4\nbody\n', 'latin1'), Buffer.from('%%EOF', 'latin1'), Buffer.from('\n', 'latin1')]);
+  const bytes = new Uint8Array(bare);
+  const plan = planSave({ contentType: 'application/pdf', bytes, text: bare.toString('latin1'), toBase64, fromBase64 });
+  assert.equal(plan.ok, true);
+  assert.equal(plan.unwrapped, undefined, 'a bare PDF is not unwrapped');
+  assert.equal(plan.base64, bare.toString('base64'), 'and is saved byte for byte, trailing newline included');
+  console.log('PASS  a bare PDF (the invoice) is still saved untouched');
+}
+
+/* 11. An envelope with no PDF in it is still refused */
+{
+  const junk = Buffer.from('--uuid:abc\r\nContent-Type: text/plain\r\n\r\nno document here', 'latin1');
+  const plan = planSave({
+    contentType: 'application/pdf', bytes: new Uint8Array(junk), text: junk.toString('latin1'), toBase64, fromBase64,
+  });
+  assert.equal(plan.ok, false, 'an envelope with no PDF must not be saved');
+  console.log('PASS  an envelope containing no PDF is still refused');
+}

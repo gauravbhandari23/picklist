@@ -454,9 +454,25 @@ Constraints worth remembering:
 - `chrome.downloads` can only write **inside the download folder**. Absolute
   paths and `..` are rejected, so `Documents` is reachable only by changing
   Chrome's own download location.
-- The response is **verified to be a PDF** before saving — by magic bytes, or by
-  finding a base64 PDF inside a JSON wrapper. Anything else is refused with a
-  reason rather than saved under a `.pdf` name.
+- The response is **verified to be a PDF** before saving. Anything else is
+  refused with a reason rather than written under a `.pdf` name.
+- **The two documents do not arrive in the same shape.** The invoice comes back
+  as a bare PDF; the shipping label is wrapped in a MIME multipart (MTOM)
+  envelope, despite both being served as `content-type: application/pdf`:
+
+  ```
+  --uuid:29af39c7-fdd3-416c-9914-a00d74880081
+  Content-Type: application/octet-stream
+  Content-Transfer-Encoding: binary
+  Content-ID: <1>
+
+  %PDF-1.5 …
+  ```
+
+  Rather than parse MIME, the bytes are cut from the `%PDF` header to the last
+  `%%EOF`. Every PDF ends with that marker, and taking the last one is correct
+  even for an incrementally updated file. A base64 PDF inside a JSON wrapper is
+  handled too, in case a third shape turns up.
 - It is **off by default** and gated by the Autosave tick-box. Off means the
   page behaves exactly as it always did.
 - A tab opened *before* the extension loaded needs **both** scripts injected on

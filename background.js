@@ -153,7 +153,8 @@ async function saveLabel({ url, packet, body, contentType = '' }) {
       orderId: packet?.orderId ?? fromUrl.orderId,
     });
 
-    tellPage(kind, '- saving as', filename, '(', plan.base64.length, 'base64 chars )');
+    tellPage(kind, '- saving as', filename,
+      plan.unwrapped ? '(unwrapped from its MIME envelope)' : '(bare PDF)');
 
     const downloadId = await chrome.downloads.download({
       url: `data:application/pdf;base64,${plan.base64}`,
