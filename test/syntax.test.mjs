@@ -27,12 +27,6 @@ for (const file of scripts) {
 }
 console.log(`PASS  all ${scripts.length} scripts parse (${scripts.join(', ')})`);
 
-// The same name declared twice in one scope is what broke inject.js: the
-// window.open wrapper reused the XMLHttpRequest one's variable.
-for (const file of scripts) {
-  const source = readFileSync(new URL(file, new URL('..', import.meta.url)), 'utf8');
-  const names = [...source.matchAll(/^\s*(?:const|let)\s+(\w+)\s*=/gm)].map((m) => m[1]);
-  const dupes = names.filter((n, i) => names.indexOf(n) !== i);
-  assert.deepEqual([...new Set(dupes)], [], `${file} declares the same name twice: ${[...new Set(dupes)]}`);
-}
-console.log('PASS  no name declared twice in the same file');
+// A same-scope redeclaration is already a parse error — that is exactly how
+// inject.js broke — so the check above covers it. A regex cannot tell scopes
+// apart, and flagged a name legitimately used in two separate functions.
