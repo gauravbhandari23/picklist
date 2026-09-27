@@ -523,6 +523,19 @@ Constraints worth remembering:
   first fills SKUs fine but never sees a label, which would look like autosave
   silently not working.
 
+### Two details worth keeping
+
+**Myntra's server sometimes 500s a label request.** The page does not retry, so
+the document is simply missing until someone notices. `inject.js` retries once
+after a pause and, if that fails too, says so in the panel. Seen live: a pack
+saved only the invoice because the label came back `500`, with nothing on
+screen to explain it.
+
+**The duplicate window is five seconds, not a minute.** It exists only to
+ignore the same response being reported twice, which happens within
+milliseconds. A longer window silently swallowed a deliberate re-download from
+the portal — which is exactly what someone does after a document failed.
+
 ## 11. Ideas not yet built
 
 1. **Reconcile ticks against Myntra's own scanned list.** `content.js` is already

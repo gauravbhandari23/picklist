@@ -10,7 +10,11 @@ import { repaginate, SHEETS } from './repaginate.js';
 
 const PACK_URL = '*://mdirect.myntrainfo.com/PackOrder/*';
 const FILL_TYPES = new Set(['FILL', 'FILL_PICKLIST']);
-const DEDUPE_MS = 60_000;
+// Only long enough to ignore the same response being reported twice, which
+// happens within milliseconds. A whole minute would silently swallow a
+// deliberate re-download from the portal — exactly what someone does when a
+// document failed the first time.
+const DEDUPE_MS = 5_000;
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});

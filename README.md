@@ -44,6 +44,8 @@ progress when Myntra reloads after PACK.
 | **Fill** | Whether a click sends the Myntra SKU (default) or your seller SKU. Myntra's box accepts both. |
 | **✓ / ▸** | Click the circle to undo one unit if a row was ticked by mistake. |
 | **OP…… chip** | The Picklist ID, read out of the PDF's barcode. Click it to fill the page's Scan Picklist ID box. |
+| **Autosave** | Saves the shipping label and the bill by itself after each pack, and stops the two Save dialogs. Off by default. |
+| **Page** | Sheet size for those saved files: Letter (default), A4, or Original — Myntra's own 4x6in label and A4 bill. |
 
 Replacing the file or clearing while items are packed asks for a second click
 first, so you cannot wipe a half-finished picklist by accident.
@@ -115,6 +117,33 @@ The counter in the header counts **units, not lines**. A picklist of two lines
 with quantities 2 and 5 reads `0/7`, not `0/2` — and there really are 7 rows.
 
 Undo is per row: click a green ✓ and that one item comes back to the list.
+
+## Autosave
+
+With **Autosave** ticked, scanning the cover barcode saves both documents on
+its own:
+
+```
+Downloads\myntra-labels\2026-09-27\
+   1974014045-label.pdf
+   1974014045-invoice.pdf
+```
+
+Named by packet id, a folder per day, and **no Save dialogs**.
+
+Nothing is printed. After a packet is packed Myntra's page fetches both
+documents from its API, and the extension saves those directly — so there is
+no print to suppress and the packet id is known, which is why the files can be
+named properly.
+
+The dialogs themselves come from **QZ Tray**, a printing application on the PC,
+not from the browser. While autosave is on the extension refuses its
+connection, so it looks absent and nothing prints. You do not need to quit it;
+with autosave off it is left completely alone.
+
+If Myntra's server refuses a document — it sometimes answers a label request
+with a 500 — the request is retried once, and if that also fails the panel says
+so rather than leaving you a file short without a word.
 
 ## What it deliberately does not do
 

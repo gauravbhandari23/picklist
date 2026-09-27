@@ -304,35 +304,6 @@
     /* observing is best effort */
   }
 
-  // Myntra's server sometimes answers a label request with a 500, and the page
-  // does not retry — the document is simply missing until someone notices and
-  // re-downloads it. One quiet retry costs nothing and saves that.
-  const retried = new Set();
-  async function retryLabel(url) {
-    const absoluteUrl = absolute(url);
-    if (retried.has(absoluteUrl)) {
-      log('*** already retried that label once, leaving it');
-      return;
-    }
-    retried.add(absoluteUrl);
-    await new Promise((r) => setTimeout(r, 1500));
-    log('*** retrying the failed label request…');
-    try {
-      const res = await origFetch(absoluteUrl, { credentials: 'include' });
-      if (!res.ok) {
-        log('*** retry also failed:', res.status, res.statusText, '— re-download it from Myntra');
-        post({ type: 'LABEL_FAILED', url: absoluteUrl, detail: `${res.status} ${res.statusText}` });
-        return;
-      }
-      const buf = await res.arrayBuffer();
-      log('*** retry succeeded,', buf.byteLength, 'bytes');
-      send(absoluteUrl, toBase64(buf), res.headers.get('content-type') ?? '');
-    } catch (err) {
-      log('*** retry failed:', String(err?.message ?? err), '— re-download it from Myntra');
-      post({ type: 'LABEL_FAILED', url: absoluteUrl, detail: String(err?.message ?? err) });
-    }
-  }
-
   const origFetch = window.fetch;
   window.fetch = function (...args) {
     const url = typeof args[0] === 'string' ? args[0] : args[0]?.url;
@@ -369,6 +340,35 @@
       return res;
     });
   };
+
+  // Myntra's server sometimes answers a label request with a 500, and the page
+  // does not retry — the document is simply missing until someone notices and
+  // re-downloads it. One quiet retry costs nothing and saves that.
+  const retried = new Set();
+  async function retryLabel(url) {
+    const absoluteUrl = absolute(url);
+    if (retried.has(absoluteUrl)) {
+      log('*** already retried that label once, leaving it');
+      return;
+    }
+    retried.add(absoluteUrl);
+    await new Promise((r) => setTimeout(r, 1500));
+    log('*** retrying the failed label request…');
+    try {
+      const res = await origFetch(absoluteUrl, { credentials: 'include' });
+      if (!res.ok) {
+        log('*** retry also failed:', res.status, res.statusText, '— re-download it from Myntra');
+        post({ type: 'LABEL_FAILED', url: absoluteUrl, detail: `${res.status} ${res.statusText}` });
+        return;
+      }
+      const buf = await res.arrayBuffer();
+      log('*** retry succeeded,', buf.byteLength, 'bytes');
+      send(absoluteUrl, toBase64(buf), res.headers.get('content-type') ?? '');
+    } catch (err) {
+      log('*** retry failed:', String(err?.message ?? err), '— re-download it from Myntra');
+      post({ type: 'LABEL_FAILED', url: absoluteUrl, detail: String(err?.message ?? err) });
+    }
+  }
 
   const origOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
