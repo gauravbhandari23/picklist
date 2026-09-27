@@ -20,6 +20,11 @@
 
   const LABEL_RE = /getShippingLabelForSellerPacket|getPacketInvoice/i;
   const PACKET_RE = /ready-to-ship/i;
+  const PRINT_GRACE_MS = 20_000;
+
+  // Set from the extension side; the page world cannot read chrome.storage.
+  let autosaveOn = false;
+  let lastCaptureAt = 0;
 
   // The packet id shown on screen, kept for naming the files.
   let packet = null;
@@ -67,8 +72,32 @@
   };
 
   const send = (url, body, contentType = '') => {
+    if (body) lastCaptureAt = Date.now();
     log('label document', { url: absolute(url), bytes: body ? body.length : 0, contentType, packet });
     post({ type: 'LABEL_DOC', url: absolute(url), packet, body: body ?? null, contentType });
+  };
+
+  // The extension tells us whether autosave is on.
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    if (event.data?.__myntraPicklistPanel !== true || event.data.type !== 'AUTOSAVE_STATE') return;
+    autosaveOn = event.data.on === true;
+    log('autosave is', autosaveOn ? 'ON' : 'OFF');
+  });
+
+  // Myntra prints the label and the bill after packing, which is what raises
+  // the two Save dialogs. When autosave has just captured both documents that
+  // print is pure duplication, so it is skipped. If capture did not happen the
+  // print goes ahead as normal, so nothing is ever lost silently.
+  const origPrint = window.print;
+  window.print = function (...args) {
+    const fresh = Date.now() - lastCaptureAt < PRINT_GRACE_MS;
+    if (autosaveOn && fresh) {
+      log('print skipped — the document was already saved by autosave');
+      return undefined;
+    }
+    log('printing normally', autosaveOn ? '(nothing captured to save)' : '(autosave off)');
+    return origPrint.apply(this, args);
   };
 
   const origFetch = window.fetch;

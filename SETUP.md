@@ -94,7 +94,7 @@ Load file   Reset   Clear    [x] Autosave    Fill [Myntra SKU]
 ```
 
 **Autosave ON** — after you scan the cover barcode, the shipping label and the
-bill save themselves:
+bill save themselves, **and the two Save dialogs do not appear at all**:
 
 ```
 Downloads\myntra-labels\2026-09-27\
@@ -107,6 +107,16 @@ ever repeats, Chrome adds `(1)` rather than overwriting.
 
 **Autosave OFF** — nothing changes. Myntra prints as it always did and you save
 by hand. Off is the default.
+
+### Why the dialogs stop
+
+Myntra prints the two documents after packing, and those prints are what raise
+the Save dialogs. Once autosave has the documents, printing them again is pure
+duplication, so the print is skipped.
+
+It is skipped **only** when a document was actually captured moments before. If
+capture fails for any reason the print goes ahead exactly as it does today, so
+you can still save by hand — nothing is ever lost quietly.
 
 ### How it works
 

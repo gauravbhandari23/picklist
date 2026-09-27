@@ -475,6 +475,14 @@ Constraints worth remembering:
   handled too, in case a third shape turns up.
 - It is **off by default** and gated by the Autosave tick-box. Off means the
   page behaves exactly as it always did.
+- **Saving alone is not enough.** Myntra still prints both documents afterwards,
+  and those prints are what raise the two Save dialogs — so autosave without
+  suppressing them just adds files while the dialogs remain. `inject.js` wraps
+  `window.print` and skips it when autosave captured a document in the last 20
+  seconds. Outside that window, or with autosave off, printing is untouched: a
+  failed capture must never leave someone with no document and no dialog.
+- Content scripts run with `all_frames: true`, since a label printed from an
+  iframe would otherwise miss the override entirely.
 - A tab opened *before* the extension loaded needs **both** scripts injected on
   demand — `content.js` and `inject.js` in the MAIN world. Injecting only the
   first fills SKUs fine but never sees a label, which would look like autosave

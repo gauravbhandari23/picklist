@@ -375,8 +375,8 @@ els.autosave.addEventListener('change', () => {
   chrome.storage.local.set({ autosave: on });
   status(
     on
-      ? 'Autosave on — the label and bill will save themselves after each pack.'
-      : 'Autosave off — save them by hand as before.',
+      ? 'Autosave on — the label and bill save themselves, and the print dialogs are skipped.'
+      : 'Autosave off — Myntra prints as usual and you save by hand.',
   );
 });
 

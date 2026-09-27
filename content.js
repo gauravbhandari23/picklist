@@ -95,6 +95,16 @@ if (!window.__myntraPicklistPanel) {
     return true; // async reply
   });
 
+  // The page world cannot read chrome.storage, so push the autosave state in —
+  // now, and again whenever it is toggled.
+  const pushAutosaveState = (on) =>
+    window.postMessage({ __myntraPicklistPanel: true, type: 'AUTOSAVE_STATE', on: on === true }, window.location.origin);
+
+  chrome.storage.local.get('autosave').then((s) => pushAutosaveState(s.autosave)).catch(() => {});
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.autosave) pushAutosaveState(changes.autosave.newValue);
+  });
+
   // inject.js runs in the page's own world and reports the label and invoice
   // URLs it sees. Relay them to the service worker, which does the saving.
   window.addEventListener('message', (event) => {
