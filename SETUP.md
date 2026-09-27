@@ -102,49 +102,69 @@ Look in the M-Direct sidebar for a **Print**, **Manifest** or
 **Invoice & Ship Label** section. Many seller portals can download every label
 for a picklist in one go. If M-Direct can, use that instead — nothing to install.
 
-### B1. Install PDF24 Creator
+### B1. Install PDFCreator
 
-Download from **tools.pdf24.org/en/creator**.
+Download from **pdfforge.org** → PDFCreator (the free version).
 
-Why this one and not the alternatives:
+⚠️ **During install, decline the bundled extras.** The installer offers toolbars
+and other software on a couple of screens — untick them. Annoying, not
+dangerous.
 
-| | PDF24 | clawPDF | PDFCreator |
+Why this one:
+
+| | PDFCreator | PDF24 | clawPDF |
 |---|---|---|---|
-| Actively maintained | **yes — v11.30.1, Apr 2026** | no — last release May 2023 | yes |
-| Adware / bundled extras | none | none | installer offers extras |
-| Free for commercial use | yes, no licence | yes (AGPL) | free tier |
+| Auto-save confirmed for silent print-to-PDF | **yes** | unclear — may still open its Assistant window | yes |
+| Actively maintained | **yes** | yes | no, last release May 2023 |
+| Installer offers extras | yes, decline them | no | no |
 
-A PDF printer installs a system-level driver and Windows service, so being
-currently maintained matters more here than it would for an ordinary app.
-clawPDF is good, auditable code, but three years without security patches is
-not worth it for a convenience feature.
+clawPDF exists *because* it is a fork of PDFCreator made to strip the adware —
+which is the clearest evidence that PDFCreator's auto-save is the part that
+works. It is also still maintained, which clawPDF is not.
 
-PDF24 is a printer with no paper. Printing to it produces a PDF file.
+PDFCreator is a printer with no paper. Printing to it produces a PDF file.
 
 ### B2. Turn on automatic saving
 
-Open **PDF24 Creator** and find the **auto save** mode in its settings, then set:
+Open PDFCreator → **Profiles** (or Settings → Profiles) and pick the default
+profile. You are looking for three things:
 
-- automatic saving **on**
-- the target folder, e.g. `C:\Users\<YourName>\Documents\Labels`
-- do not open the PDF after saving
+| Setting | Value |
+|---|---|
+| **Automatic saving** (an "Auto-Save" action on the profile) | **ON** ← this removes the dialog |
+| **Target folder** | `C:\Users\<YourName>\Documents\Labels` |
+| **Open the document after saving** | **OFF** |
 
-The exact labels move between versions, so go by meaning rather than by an
-exact string. If you cannot find it, say so and it can be walked through
-screen by screen.
+Set the **filename** with the token buttons next to the box rather than typing
+tokens from memory — the syntax differs between versions and the picker always
+inserts the right one. A date plus a counter, e.g. time + an incrementing
+number, gives names that can never repeat.
 
-**Hold ALT to break out of auto-save for one print.** That is PDF24's own
-feature and it is worth remembering: when you actually want to choose where a
-PDF goes, hold ALT while printing and the normal dialog comes back. Everything
-else keeps saving silently. It removes the main drawback of this whole setup.
+The exact wording of these options moves between PDFCreator versions, so go by
+meaning rather than an exact string. If you cannot find one, say what you see on
+screen and it can be walked through.
 
-### B3. Make PDF24 the Windows default printer
+### B2a. Prove it works before doing the rest
+
+Ten minutes, and it settles the question with no guessing:
+
+1. Install PDFCreator, auto-save on, folder set (B1, B2)
+2. Make it the Windows default printer (B3)
+3. Close every Chrome window, relaunch with `--kiosk-printing` (B4, B5)
+4. Open **any** web page and press **Ctrl+P**
+
+Did a PDF land in the folder with no dialog?
+
+- **yes** — it works, carry on
+- **no** — stop, and report what appeared instead
+
+### B3. Make PDFCreator the Windows default printer
 
 Windows → **Settings → Bluetooth & devices → Printers & scanners**
 
 1. Turn **OFF** "Let Windows manage my default printer"
    ← easy to miss, and Windows will undo your choice if you leave it on
-2. Click the **PDF24** printer → **Set as default**
+2. Click **PDFCreator** → **Set as default**
 
 ### B4. Add the flag to your Chrome shortcut
 
@@ -197,10 +217,11 @@ the printer in one job.
 
 ### Things to know
 
-- **PDF24 becomes your default printer.** Printing from Word or Excel without
-  looking will make a PDF instead of paper. The dialog still appears in normal
-  programs so you can pick a different printer — and holding **ALT** while
-  printing breaks auto-save for that one job.
+- **PDFCreator becomes your default printer.** Printing from Word or Excel
+  without looking will make a PDF instead of paper. The dialog still appears in
+  normal programs so you can pick a different printer — you just have to notice.
+  If that becomes a nuisance, switch the Windows default back when you are not
+  packing; it is two clicks.
 - **Downloads are unaffected.** Only printing changes.
   `Save Print Output As` is a print; `Save As` is a download.
 - **There is no confirmation any more.** Glance at the folder every 10 orders

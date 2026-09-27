@@ -404,14 +404,15 @@ error on their own.
   Documents. Rejected as worse than the alternative.
 - **Removing the two Save dialogs — in code.** This is a printing problem, not
   a browser one, and the extension plays no part in it. It is solved entirely
-  with settings: PDF24 Creator as the default printer with auto-save on, plus
+  with settings: PDFCreator as the default printer with auto-save on, plus
   `--kiosk-printing` on the Chrome shortcut. See [SETUP.md](SETUP.md).
 
-  PDF24 over clawPDF: clawPDF is good auditable AGPL code, but its last release
-  was May 2023. A PDF printer installs a system-level driver and service, so a
-  currently-maintained one matters. PDF24 (v11.30.1, April 2026) carries no
-  adware, is free for commercial use, and can break auto-save for a single job
-  by holding ALT.
+  PDFCreator over the alternatives: it is the one with auto-save confirmed for
+  exactly this job, and it is still maintained. clawPDF is a fork of it made to
+  strip the adware — good auditable code, but no release since May 2023, and a
+  virtual printer installs a system-level driver and service. PDF24 is
+  maintained and clean, but its auto-save may live in its Assistant window
+  rather than at the printer level, which would not be silent.
 
   Worth recording why no code could do it better: Chrome's silent printing
   always targets the **system default printer** and cannot be pointed at
