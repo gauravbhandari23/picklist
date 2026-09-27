@@ -45,6 +45,10 @@ echo.
 start "" "%CHROME%" --user-data-dir="%PACKDIR%"
 
 echo Packing Chrome opened.
-echo Profile stored at: %PACKDIR%
-timeout /t 8 /nobreak >nul
+echo Stored at: %PACKDIR%
+echo.
+echo When you have done those three things, close that Chrome and
+echo use start-packing-chrome.bat from now on.
+echo.
+pause
 endlocal

@@ -188,6 +188,10 @@ The profile lives in `%LOCALAPPDATA%\ChromePacking`.
 
 #### Every day: `windows\start-packing-chrome.bat`
 
+It refuses to run until the setup above has been done, because it turns off the
+print preview — started with no Myntra login, no extension and no printer set,
+there would be no way to fix any of that from inside it.
+
 Double-click it. Right-click → **Pin to taskbar** to keep it handy.
 
 That is the whole routine. Labels save silently; everything else on the PC

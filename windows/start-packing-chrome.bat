@@ -26,12 +26,30 @@ if not exist "%CHROME%" (
 
 set "PACKDIR=%LOCALAPPDATA%\ChromePacking"
 
-if not exist "%PACKDIR%" (
-  echo The packing Chrome is not set up yet.
-  echo Run setup-packing-chrome.bat first.
+REM The trailing backslash is what makes this test a DIRECTORY reliably.
+if not exist "%PACKDIR%\" (
+  echo.
+  echo  ==================================================================
+  echo   NOT SET UP YET
+  echo.
+  echo   Run  setup-packing-chrome.bat  first -- once only.
+  echo.
+  echo   That one logs you in to Myntra, installs the extension and
+  echo   sets the printer. This one refuses to start until it has,
+  echo   because it turns off the print preview and you would have
+  echo   no way to fix any of that from inside.
+  echo  ==================================================================
+  echo.
   pause
   exit /b 1
 )
 
+echo Starting packing Chrome...
 start "" "%CHROME%" --user-data-dir="%PACKDIR%" --kiosk-printing
+if errorlevel 1 (
+  echo.
+  echo Chrome did not start. Path used:
+  echo   %CHROME%
+  pause
+)
 endlocal
