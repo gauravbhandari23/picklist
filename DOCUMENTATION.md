@@ -410,6 +410,23 @@ error on their own.
   PDFCreator because it is the one with auto-save confirmed for this job and is
   still maintained; the alternatives are weighed in [SETUP.md](SETUP.md).
 
+  Two things about Chrome cost real time to work out, and are worth recording:
+
+  1. **A command-line flag is only read when Chrome starts a new process.** With
+     any Chrome already running — including the background process that
+     survives closing every window — a shortcut opens a window in the old
+     process and the flag is silently dropped. `chrome://version`'s
+     **Command Line** row is the only reliable way to tell.
+     `windows/start-packing-chrome.bat` closes Chrome first, so the flag always
+     applies.
+  2. **Chrome prints to the last printer it used, not the Windows default.**
+     Setting PDFCreator as the Windows default does nothing on its own. The
+     `PrintPreviewUseSystemDefaultPrinter` policy makes Chrome follow Windows
+     instead; `windows/chrome-use-system-default-printer.reg` sets it.
+
+  Together these remove the reason for a separate Chrome profile, which existed
+  only to force a new process and isolate the remembered printer.
+
   Worth recording why no code could do it better: Chrome's silent printing
   always targets the **system default printer** and cannot be pointed at
   Chrome's own "Save as PDF", so a virtual PDF printer is unavoidable. And an

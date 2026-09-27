@@ -1,0 +1,17 @@
+Windows Registry Editor Version 5.00
+
+; Makes Chrome always print to the WINDOWS default printer instead of whichever
+; printer it happened to use last.
+;
+; Without this, Chrome remembers the last printer per profile. Printing one
+; thing to a real printer in an ordinary Chrome window then silently redirects
+; the shipping labels to paper too -- with no preview to warn you, because
+; silent printing is the whole point.
+;
+; With this set, Chrome ignores its own memory and follows Windows. Set
+; PDFCreator as the Windows default and labels always go there.
+;
+; Double-click this file and approve the prompt. Restart Chrome afterwards.
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome]
+"PrintPreviewUseSystemDefaultPrinter"=dword:00000001

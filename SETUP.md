@@ -141,6 +141,66 @@ this is why.
 Also worth setting while you are in the profile: turn **off** opening the
 document after saving, under the same Save section.
 
+### B2b. Two fixes that make this reliable without a second Chrome profile
+
+Silent printing has two ways to go quietly wrong on a shared profile. Both are
+fixed once, and then never thought about again. The files are in the
+`windows/` folder of this repo — copy them to the packing PC.
+
+#### Fix 1 — the flag being ignored: `start-packing-chrome.bat`
+
+A Chrome flag is only read when Chrome starts a **new process**. If any Chrome
+is already running — including the background process that survives closing
+every window — a shortcut just opens another window in the old process and the
+flag is **silently dropped**. Nothing warns you; printing simply behaves as
+before.
+
+`windows/start-packing-chrome.bat` closes Chrome properly and then starts it
+with the flag, so it always applies:
+
+```bat
+taskkill /F /IM chrome.exe
+timeout /t 2
+start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing
+```
+
+Copy it to the desktop and open Chrome with it. Right-click → **Pin to
+taskbar** if you want it one click away.
+
+It force-closes Chrome, so any open tabs shut — Chrome offers to restore them.
+
+#### Fix 2 — the shared printer memory: the `.reg` file
+
+Chrome remembers the **last printer used**, per profile — not the Windows
+default. That is why setting PDFCreator as the Windows default was not enough
+on its own.
+
+It also means printing one thing to a real printer in an ordinary Chrome window
+redirects the labels to paper too, with no preview to warn you.
+
+`windows/chrome-use-system-default-printer.reg` sets Chrome's
+`PrintPreviewUseSystemDefaultPrinter` policy, which makes Chrome ignore its own
+memory and follow the Windows default instead:
+
+```
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome]
+"PrintPreviewUseSystemDefaultPrinter"=dword:00000001
+```
+
+Double-click it, approve the prompt, restart Chrome. From then on, whatever is
+set as the Windows default printer is where Chrome prints — full stop.
+
+#### Together
+
+| | Without these | With these |
+|---|---|---|
+| Flag applies | only if every Chrome was closed first | always |
+| Which printer | whichever Chrome used last | always the Windows default |
+| Normal Chrome can break packing | yes, silently | no |
+
+That removes the reason for a separate Chrome profile: the profile existed to
+force a new process and isolate the printer memory, and these do both.
+
 ### B2a. Prove it works before doing the rest
 
 Ten minutes, and it settles the question with no guessing:
