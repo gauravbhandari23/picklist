@@ -508,6 +508,13 @@ Constraints worth remembering:
   way, and gives up.
 
   With autosave off, QZ Tray is left entirely alone.
+
+  `test/inject.test.mjs` runs `inject.js` in a fake page and exercises this
+  directly, because otherwise it can only be checked by packing a real order.
+  It covers both autosave states, all the ports QZ walks, that an unrelated
+  WebSocket still connects, and that the refused socket fires `error` then
+  `close` through both `onerror` and `addEventListener` — QZ's client uses both,
+  and a socket that never fails would hang it rather than freeing it to give up.
 - **The documents are re-paged before saving.** Myntra serves the label at 4x6in
   and the invoice at A4, but the old route re-printed both through Microsoft
   Print to PDF onto the Windows default paper, so the files people are used to
