@@ -15,7 +15,9 @@
   // Deliberately noisy: when autosave does not fire, these lines in the page
   // console are the fastest way to see whether this script ran at all, whether
   // it saw the request, and how the response came back.
-  const log = (...a) => console.log('[picklist]', ...a);
+  const where =
+    window === window.top ? 'top' : `frame<${String(location.href).slice(0, 70)}>`;
+  const log = (...a) => console.log('[picklist]', where, ...a);
   log('watching for label requests');
 
   const LABEL_RE = /getShippingLabelForSellerPacket|getPacketInvoice/i;
@@ -104,6 +106,49 @@
   // The two Save dialogs did not come from window.print() in this page, so the
   // document must be opened somewhere else to be printed. Watch for that, and
   // once autosave has the document, do not open it at all.
+  // Everything below is here to answer one question: what raises the two Save
+  // dialogs? Each possible route logs distinctly, so a single packed order
+  // shows which one is in use.
+
+  // Fires in whichever document is actually being printed.
+  window.addEventListener('beforeprint', () => log('*** BEFOREPRINT — a print is starting in this document'));
+  window.addEventListener('afterprint', () => log('*** AFTERPRINT — that print finished'));
+
+  // A PDF turned into a blob: URL is the usual prelude to showing or printing it.
+  try {
+    const origCreateObjectURL = URL.createObjectURL;
+    URL.createObjectURL = function (obj) {
+      const url = origCreateObjectURL.call(this, obj);
+      log('URL.createObjectURL', obj?.type || typeof obj, obj?.size ?? '', '->', String(url).slice(0, 60));
+      return url;
+    };
+  } catch {
+    /* best effort */
+  }
+
+  // Printing a hidden iframe is the commonest way to print a PDF, and an
+  // override on this window would never see it.
+  const hookFrame = (frame) => {
+    try {
+      const w = frame.contentWindow;
+      if (!w || w.__myntraFramePrint) return;
+      w.__myntraFramePrint = true;
+      const framePrint = w.print;
+      w.print = function (...args) {
+        const fresh = Date.now() - lastCaptureAt < PRINT_GRACE_MS;
+        log('*** IFRAME print() called. autosave =', autosaveOn, '| captured recently =', fresh);
+        if (autosaveOn && fresh) {
+          log('*** iframe print skipped — already saved by autosave');
+          return undefined;
+        }
+        return framePrint.apply(this, args);
+      };
+      log('hooked print() on an iframe', String(frame.getAttribute('src') || '(no src)').slice(0, 70));
+    } catch (err) {
+      log('could not hook an iframe (cross-origin):', String(frame.getAttribute('src') || '').slice(0, 70));
+    }
+  };
+
   const origWindowOpen = window.open;
   window.open = function (url, ...rest) {
     const target = String(url ?? '');
@@ -131,11 +176,22 @@
   // an iframe or an embed is being used instead.
   try {
     const watchNode = (node) => {
+      const tag = node.tagName;
       const src = node.getAttribute?.('src') || node.getAttribute?.('data') || '';
-      if (src && LABEL_RE.test(src)) log('element added pointing at a label:', node.tagName, src);
-      node.querySelectorAll?.('[src],[data]').forEach((el) => {
-        const s2 = el.getAttribute('src') || el.getAttribute('data') || '';
-        if (s2 && LABEL_RE.test(s2)) log('nested element pointing at a label:', el.tagName, s2);
+      // Any frame or embed at all is worth reporting — it may carry a blob: URL
+      // rather than the label URL, and would otherwise look like nothing.
+      if (tag === 'IFRAME' || tag === 'EMBED' || tag === 'OBJECT') {
+        log('*** added', tag, 'src=', String(src).slice(0, 80) || '(none)');
+        if (tag === 'IFRAME') {
+          hookFrame(node);
+          node.addEventListener?.('load', () => hookFrame(node), { once: true });
+        }
+      } else if (src && LABEL_RE.test(src)) {
+        log('element added pointing at a label:', tag, src);
+      }
+      node.querySelectorAll?.('iframe,embed,object').forEach((el) => {
+        log('*** nested', el.tagName, 'src=', String(el.getAttribute('src') || '').slice(0, 80) || '(none)');
+        if (el.tagName === 'IFRAME') hookFrame(el);
       });
     };
     new MutationObserver((records) => {
