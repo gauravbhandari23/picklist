@@ -18,11 +18,14 @@
   // Stamped so the console says which build a tab is actually running. A tab
   // that was not reloaded keeps the previous inject.js, and the symptom — some
   // log lines present, others missing — is otherwise very hard to read.
-  const BUILD = '2026-09-27c qz-refuse';
+  const BUILD = '2026-09-27d qz-deep-diagnostics';
 
+  const startedAt = Date.now();
   const where =
     window === window.top ? 'top' : `frame<${String(location.href).slice(0, 70)}>`;
-  const log = (...a) => console.log('[picklist]', where, ...a);
+  // The millisecond offset matters: whether autosave arrives before QZ Tray is
+  // contacted decides whether it can be refused at all.
+  const log = (...a) => console.log(`[picklist +${Date.now() - startedAt}ms]`, where, ...a);
   log('build', BUILD, '— watching for label requests. autosave starts OFF until the panel says otherwise');
 
   const LABEL_RE = /getShippingLabelForSellerPacket|getPacketInvoice/i;
@@ -32,6 +35,9 @@
   // Set from the extension side; the page world cannot read chrome.storage.
   let autosaveOn = false;
   let lastCaptureAt = 0;
+  let qzAttempts = 0;
+  let qzRefused = 0;
+  let qzConnected = false;
 
   // The packet id shown on screen, kept for naming the files.
   let packet = null;
@@ -44,8 +50,24 @@
     }
   };
 
+  const status = () => ({
+    build: BUILD,
+    autosaveOn,
+    msSinceCapture: lastCaptureAt ? Date.now() - lastCaptureAt : null,
+    webSocketIsOurs: PrintServiceSocket !== null && window.WebSocket === PrintServiceSocket,
+    printIsOurs: window.print === wrappedPrint,
+    qzAttempts,
+    qzRefused,
+    qzConnected,
+  });
+  // Typing __picklistStatus() in the console prints this at any time.
+  window.__picklistStatus = () => {
+    log('STATUS', status());
+    return status();
+  };
+
   const notePacket = (text) => {
-    log('packet response seen');
+    log('packet response seen. STATUS AT PACK TIME:', status());
     try {
       const body = JSON.parse(text);
       const row = Array.isArray(body?.data) ? body.data[0] : body?.data;
@@ -97,7 +119,7 @@
   // print is pure duplication, so it is skipped. If capture did not happen the
   // print goes ahead as normal, so nothing is ever lost silently.
   const origPrint = window.print;
-  window.print = function (...args) {
+  const wrappedPrint = function (...args) {
     const fresh = Date.now() - lastCaptureAt < PRINT_GRACE_MS;
     log('window.print called. autosave =', autosaveOn, '| captured recently =', fresh);
     if (autosaveOn && fresh) {
@@ -107,6 +129,7 @@
     log('printing normally', autosaveOn ? '(nothing captured to save)' : '(autosave off)');
     return origPrint.apply(this, args);
   };
+  window.print = wrappedPrint;
 
   // The two Save dialogs did not come from window.print() in this page, so the
   // document must be opened somewhere else to be printed. Watch for that, and
@@ -218,29 +241,40 @@
     return socket;
   }
 
+  // Declared out here so status() can report whether the hook is still in
+  // place; assigned inside the try below.
+  let PrintServiceSocket = null;
+
   try {
     const OriginalWebSocket = window.WebSocket;
-    const PrintServiceSocket = function (url, ...rest) {
-      if (QZ_RE.test(String(url))) {
+    PrintServiceSocket = function (url, ...rest) {
+      const isQz = QZ_RE.test(String(url));
+      if (isQz) {
+        qzAttempts += 1;
         const fresh = Date.now() - lastCaptureAt < PRINT_GRACE_MS;
+        log(`*** QZ attempt #${qzAttempts}`, String(url), '| autosave =', autosaveOn, '| captured recently =', fresh);
         if (autosaveOn) {
-          if (!window.__myntraPrintServiceBlocked) {
-            window.__myntraPrintServiceBlocked = true;
-            log('*** refusing the local print service (QZ Tray) — autosave has the documents');
-          }
+          qzRefused += 1;
+          log('*** REFUSED — autosave has the documents, so nothing should print');
           return refusedSocket(url);
         }
-        if (!window.__myntraPrintServiceSeen) {
-          window.__myntraPrintServiceSeen = true;
-          log('*** page is contacting QZ Tray and autosave is OFF, so it is left alone. captured recently =', fresh);
-        }
+        log('*** allowing it through (autosave is off)');
       }
       const socket = new OriginalWebSocket(url, ...rest);
-      if (QZ_RE.test(String(url))) {
+      if (isQz) {
+        socket.addEventListener('open', () => {
+          qzConnected = true;
+          log('*** QZ Tray CONNECTED — it is running, and this is what prints');
+        });
+        socket.addEventListener('close', (e) => log('*** QZ socket closed, code', e?.code));
+        socket.addEventListener('message', (e) => {
+          const body = typeof e.data === 'string' ? e.data : `(${typeof e.data})`;
+          log('*** QZ ->', body.slice(0, 200));
+        });
         const originalSend = socket.send.bind(socket);
         socket.send = function (data) {
           const body = typeof data === 'string' ? data : `(${typeof data})`;
-          log('*** print service <- ', body.slice(0, 200));
+          log('*** QZ <-', body.slice(0, 400));
           return originalSend(data);
         };
       }
@@ -251,8 +285,22 @@
       PrintServiceSocket[k] = OriginalWebSocket[k];
     }
     window.WebSocket = PrintServiceSocket;
-  } catch {
-    /* leave the page's own socket alone if anything here fails */
+
+    // A bundle loading later can overwrite these. Check periodically and put
+    // them back, saying so, since a silently replaced hook looks identical to
+    // a hook that never worked.
+    setInterval(() => {
+      if (window.WebSocket !== PrintServiceSocket) {
+        log('!!! window.WebSocket had been replaced — re-installing');
+        window.WebSocket = PrintServiceSocket;
+      }
+      if (window.print !== wrappedPrint) {
+        log('!!! window.print had been replaced — re-installing');
+        window.print = wrappedPrint;
+      }
+    }, 1000);
+  } catch (err) {
+    log('!!! could not install the WebSocket hook:', String(err?.message ?? err));
   }
 
   const origWindowOpen = window.open;

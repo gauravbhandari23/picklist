@@ -523,6 +523,31 @@ Constraints worth remembering:
   first fills SKUs fine but never sees a label, which would look like autosave
   silently not working.
 
+### Diagnosing from the console
+
+`inject.js` logs under `[picklist +Nms]`, the offset being milliseconds since it
+started. That ordering is the point: whether the autosave state arrives before
+the page contacts QZ Tray decides whether it can be refused at all.
+
+Its first line is a **build stamp**. A content script only changes when the
+*page* is reloaded, not when the extension is, so a tab can keep running an old
+copy — and the symptom is maddening: some log lines present, others missing,
+with no error anywhere. Always check the stamp before reading anything else.
+
+Typing `__picklistStatus()` in the page console prints, at any moment:
+
+```js
+{ build, autosaveOn, msSinceCapture,
+  webSocketIsOurs, printIsOurs,      // are the hooks still in place?
+  qzAttempts, qzRefused, qzConnected }
+```
+
+The same line is printed automatically when a packet is packed, which is the
+moment that matters. `webSocketIsOurs: false` means a later bundle replaced the
+hook; that is now checked every second and re-installed, with a `!!!` line
+saying so, because a silently replaced hook looks exactly like one that never
+worked.
+
 ### Two details worth keeping
 
 **Myntra's server sometimes 500s a label request.** The page does not retry, so
