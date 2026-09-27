@@ -147,59 +147,60 @@ Silent printing has two ways to go quietly wrong on a shared profile. Both are
 fixed once, and then never thought about again. The files are in the
 `windows/` folder of this repo — copy them to the packing PC.
 
-#### Fix 1 — the flag being ignored: `start-packing-chrome.bat`
+#### Fix 1 — one icon that turns packing mode on and off
 
-A Chrome flag is only read when Chrome starts a **new process**. If any Chrome
-is already running — including the background process that survives closing
-every window — a shortcut just opens another window in the old process and the
-flag is **silently dropped**. Nothing warns you; printing simply behaves as
-before.
+`windows/start-packing-chrome.bat` does four things:
 
-`windows/start-packing-chrome.bat` closes Chrome properly and then starts it
-with the flag, so it always applies:
+1. Remembers the printer you normally use
+2. Switches the Windows default to **PDFCreator**
+3. Closes Chrome properly, then starts it with `--kiosk-printing`
+4. Waits, and **puts your normal printer back the moment you close Chrome**
 
-```bat
-taskkill /F /IM chrome.exe
-timeout /t 2
-start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing
-```
+So the PDF printer is only in force while you are actually packing. Close
+Chrome and ordinary printing on the PC is exactly as it was.
 
-Copy it to the desktop and open Chrome with it. Right-click → **Pin to
-taskbar** if you want it one click away.
+It closes Chrome first because **a flag is only read when Chrome starts a new
+process.** Any Chrome still running — including the background process that
+survives closing every window — makes the flag be ignored, silently. That is
+the single most common reason silent printing "stops working".
 
-It force-closes Chrome, so any open tabs shut — Chrome offers to restore them.
+**Keep the black window open while you pack.** That window is what puts your
+printer back. It also tells you at a glance that packing mode is on.
 
-#### Fix 2 — the shared printer memory: the `.reg` file
+If it ever gets interrupted — window closed, PC restarted — run
+`windows/restore-printer.bat` to put your normal printer back.
 
-Chrome remembers the **last printer used**, per profile — not the Windows
-default. That is why setting PDFCreator as the Windows default was not enough
-on its own.
+#### Fix 2 — make Chrome obey the Windows default at all
 
-It also means printing one thing to a real printer in an ordinary Chrome window
-redirects the labels to paper too, with no preview to warn you.
+Chrome prints to the **last printer it used**, remembered per profile, not the
+Windows default. That is why setting PDFCreator as the Windows default does
+nothing on its own, and why the script above would not be enough by itself.
 
 `windows/chrome-use-system-default-printer.reg` sets Chrome's
-`PrintPreviewUseSystemDefaultPrinter` policy, which makes Chrome ignore its own
-memory and follow the Windows default instead:
+`PrintPreviewUseSystemDefaultPrinter` policy, which makes Chrome follow the
+Windows default instead of its own memory:
 
 ```
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome]
 "PrintPreviewUseSystemDefaultPrinter"=dword:00000001
 ```
 
-Double-click it, approve the prompt, restart Chrome. From then on, whatever is
-set as the Windows default printer is where Chrome prints — full stop.
+Double-click it, approve the prompt, restart Chrome. One time only.
+
+**Both are needed.** The `.reg` makes Chrome follow Windows; the `.bat` decides
+what Windows points at, and only while you are packing.
 
 #### Together
 
-| | Without these | With these |
+| | While packing | Rest of the time |
 |---|---|---|
-| Flag applies | only if every Chrome was closed first | always |
-| Which printer | whichever Chrome used last | always the Windows default |
-| Normal Chrome can break packing | yes, silently | no |
+| Chrome started by | the .bat | normally |
+| Print preview | skipped | appears as usual |
+| Goes to | PDFCreator, saved as PDF | your normal printer |
+| Word, Excel, anything else | PDFCreator | your normal printer |
 
-That removes the reason for a separate Chrome profile: the profile existed to
-force a new process and isolate the printer memory, and these do both.
+The switch lasts exactly as long as the packing Chrome is open. Nothing is left
+changed afterwards, so this needs no separate Chrome profile.
 
 ### B2a. Prove it works before doing the rest
 
