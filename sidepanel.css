@@ -1,0 +1,220 @@
+:root {
+  --bg: #ffffff;
+  --card: #f7f7f8;
+  --border: #e3e3e6;
+  --text: #16161a;
+  --muted: #6b6b75;
+  --brand: #9c4458;
+  --good: #16a34a;
+  --warn-bg: #fff7e6;
+  --warn-border: #f0c36d;
+  --warn-text: #7a5200;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1c1f;
+    --card: #26262b;
+    --border: #3a3a41;
+    --text: #f2f2f4;
+    --muted: #a0a0ab;
+    --brand: #e88ba0;
+    --good: #4ade80;
+    --warn-bg: #3a2f14;
+    --warn-border: #7a5f1f;
+    --warn-text: #f5d98a;
+  }
+}
+
+* { box-sizing: border-box; }
+html { height: 100%; }
+/* The panel is one column the height of the window. Everything above the list
+   is fixed; the list is the only thing that scrolls. That keeps the toolbar
+   always reachable and stops a status message shoving the rows around. */
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+header, .toolbar, .status, .warnings, .drop { flex: none; }
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.titles { flex: 1; min-width: 0; }
+.titles .line { display: flex; align-items: center; gap: 6px; }
+/* The Picklist ID is decoded from the barcode in the PDF, and clicking it fills
+   the page's Scan Picklist ID box. */
+.pid {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .02em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--brand);
+  background: transparent;
+  color: var(--brand);
+}
+.pid:hover { background: var(--brand); color: #fff; }
+h1 { margin: 0; font-size: 14px; font-weight: 650; }
+#subtitle {
+  margin: 1px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  color: var(--brand);
+  white-space: nowrap;
+}
+
+button {
+  font: inherit;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+button.icon {
+  border: 0;
+  background: none;
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 4px;
+  color: var(--muted);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.mode { margin-left: auto; font-size: 11px; color: var(--muted); }
+.mode select {
+  font: inherit;
+  margin-left: 4px;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px;
+}
+
+.status, .warnings {
+  margin: 8px 12px 0;
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.status { background: var(--card); border: 1px solid var(--border); }
+.warnings { max-height: 28vh; overflow-y: auto; }
+.status.bad { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); }
+.warnings { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text); }
+.warnings ul { margin: 0; padding-left: 16px; }
+
+.drop {
+  display: block;
+  width: calc(100% - 24px);
+  margin: 12px;
+  padding: 28px 12px;
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  text-align: center;
+  color: var(--text);
+  cursor: pointer;
+}
+.drop:hover, .drop:focus-visible { border-color: var(--brand); background: var(--card); }
+.drop.over { border-color: var(--brand); background: var(--card); }
+.drop .big { display: block; font-weight: 650; margin-bottom: 3px; }
+.drop .muted { display: block; }
+.muted { color: var(--muted); font-size: 11px; }
+
+.rows {
+  flex: 1;
+  min-height: 0;          /* without this a flex child refuses to scroll */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  margin: 0;
+  padding: 6px 0 24px;
+}
+.row {
+  /* keeps a little context above/below when a row is scrolled into view */
+  scroll-margin-block: 52px;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.row .tick {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+.row.next .tick { border-color: var(--brand); color: var(--brand); }
+.row.next .qty.multi { color: var(--brand); border-color: var(--brand); }
+.row.done .tick { background: var(--good); border-color: var(--good); color: #fff; }
+.row .body { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 0; color: inherit; cursor: pointer; }
+.row .msku { font-weight: 650; font-variant-numeric: tabular-nums; }
+.row .ssku { color: var(--brand); word-break: break-all; font-size: 12px; }
+.row .desc { color: var(--muted); font-size: 11px; }
+.row .qty {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* A multi-quantity row is the easiest thing to short-ship, so its counter is
+   a badge rather than grey text, and a started row gets a spine down the side. */
+.row .qty.multi {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-weight: 650;
+}
+.row.done .qty.multi { color: var(--good); border-color: var(--good); opacity: 1; }
+.row.next { background: var(--card); }
+.row.done .msku, .row.done .ssku, .row.done .desc { opacity: .5; }
+.row.done .msku { text-decoration: line-through; }
+.size {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-right: 4px;
+  font-size: 10px;
+  color: var(--text);
+}

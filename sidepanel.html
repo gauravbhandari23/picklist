@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Picklist</title>
+<link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+<header>
+  <div class="titles">
+    <div class="line">
+      <h1>Picklist</h1>
+      <button id="picklistId" class="pid" type="button" hidden
+              title="Click to fill the Scan Picklist ID box"></button>
+    </div>
+    <p id="subtitle">No file loaded</p>
+  </div>
+  <div class="count"><span id="doneCount">0</span>/<span id="totalCount">0</span></div>
+  <button id="close" class="icon" title="Close panel">&times;</button>
+</header>
+
+<div class="toolbar">
+  <button id="pick" class="primary">Load file</button>
+  <button id="reset" title="Clear all ticks but keep the list">Reset</button>
+  <button id="clear" title="Remove the list completely">Clear</button>
+  <label class="mode">
+    Fill
+    <select id="fillMode">
+      <option value="myntra">Myntra SKU</option>
+      <option value="seller">Seller SKU</option>
+    </select>
+  </label>
+</div>
+
+<div id="status" class="status" hidden></div>
+<div id="warnings" class="warnings" hidden></div>
+
+<button id="drop" class="drop" type="button">
+  <span class="big">Click to choose the picklist PDF</span>
+  <span class="muted">or drag the file anywhere onto this panel</span>
+</button>
+
+<ol id="rows" class="rows" hidden></ol>
+
+<input id="file" type="file" accept="application/pdf" hidden>
+<script type="module" src="sidepanel.js"></script>
+</body>
+</html>
