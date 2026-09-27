@@ -9,7 +9,17 @@
 // more reliable. Nothing is blocked, altered or re-sent.
 
 (() => {
-  if (window.__myntraLabelWatch) return;
+  if (window.__myntraLabelWatch) {
+    // Re-injected into a page that already has it. Say so rather than
+    // returning in silence: an unexplained absence of logs is what makes this
+    // hard to tell apart from the script never arriving.
+    try {
+      console.log('[picklist] already watching this page — nothing to do');
+    } catch {
+      /* no console */
+    }
+    return;
+  }
   window.__myntraLabelWatch = true;
 
   // Deliberately noisy: when autosave does not fire, these lines in the page
@@ -18,7 +28,7 @@
   // Stamped so the console says which build a tab is actually running. A tab
   // that was not reloaded keeps the previous inject.js, and the symptom — some
   // log lines present, others missing — is otherwise very hard to read.
-  const BUILD = '2026-09-27e top-frame-only';
+  const BUILD = '2026-09-27f spa-reinject';
 
   const startedAt = Date.now();
   // Cross-origin frames can make either of these throw. Nothing here is worth

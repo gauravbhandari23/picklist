@@ -530,6 +530,23 @@ Constraints worth remembering:
   first fills SKUs fine but never sees a label, which would look like autosave
   silently not working.
 
+### The pack page is a single-page app
+
+Reaching `/PackOrder/Operations` by clicking through the app changes the URL
+through the history API **without a page load**, and Chrome does not inject
+content scripts for that. Nothing runs, and there is no error to show for it —
+`__picklistStatus()` is simply undefined, saving does not happen, and the QZ
+Tray refusal never installs.
+
+`background.js` watches `chrome.tabs.onUpdated` for the URL becoming a pack
+page and injects both scripts itself. Both are guarded against running twice,
+so re-injecting is harmless, and a re-injection now says so in the console
+rather than returning in silence — an unexplained absence of logs is hard to
+tell apart from the script never arriving.
+
+Opening the pack URL directly in the address bar was always fine; it is
+in-app navigation that skipped injection.
+
 ### Diagnosing from the console
 
 `inject.js` logs under `[picklist +Nms]`, the offset being milliseconds since it

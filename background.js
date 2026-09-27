@@ -55,18 +55,42 @@ async function relayToPackTab(msg) {
     // no listener there yet
   }
 
+  await ensureScripts(tab.id);
   try {
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
-    // The page-world watcher has to go in too, or a tab that was already open
-    // fills SKUs fine but never reports its labels.
-    await chrome.scripting
-      .executeScript({ target: { tabId: tab.id }, files: ['inject.js'], world: 'MAIN' })
-      .catch(() => {});
     return await chrome.tabs.sendMessage(tab.id, msg);
   } catch {
     return { ok: false, reason: 'no-content-script' };
   }
 }
+
+/* ---------- keeping the scripts present on a single-page app ---------- */
+
+// The pack page is a single-page app. Reaching PackOrder by clicking through
+// the app changes the URL through the history API without a page load, and
+// Chrome does not inject content scripts for that — so nothing runs at all,
+// with no error to show for it. Watch for the URL becoming a pack page and put
+// the scripts in.
+const PACK_PATTERN = /^https?:\/\/mdirect\.myntrainfo\.com\/PackOrder\//i;
+
+async function ensureScripts(tabId) {
+  // Both are guarded against running twice, so re-injecting is harmless.
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+  } catch {
+    /* the tab may have gone */
+  }
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['inject.js'], world: 'MAIN' });
+  } catch {
+    /* same */
+  }
+}
+
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+  const url = info.url ?? tab?.url ?? '';
+  if (!PACK_PATTERN.test(url)) return;
+  if (info.url || info.status === 'complete') ensureScripts(tabId);
+});
 
 /* ---------- autosaving the label and invoice ---------- */
 
