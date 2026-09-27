@@ -92,7 +92,33 @@ is no text copy of it in the PDF, and no digits are printed under the barcode.
 
 A 112×150 JPEG, drawn at 112.5×30pt. See §3.
 
-### 2.5 The Total Quantity line
+### 2.5 Pages restart their coordinates — and that broke everything
+
+A picklist longer than about 8 items spills onto a second page. Every PDF page
+restarts its coordinate system at the top, so **page 2's y values sit above page
+1's**:
+
+```
+Page 1:  header y=645.9 ... last item y=74.2
+Page 2:  item   y=764.0 ... Total Quantity y=731.0
+```
+
+Merging the pages into one list made the row-banding cutoffs read as
+"skip anything below y=733 or above y=644" — which is every cell. The grid came
+out completely empty, so every row reported *no seller SKU found* and the
+quantity column was never located.
+
+The fix is to shift each page down by more than a page height
+(`PAGE_SPAN = 5000`) so y decreases continuously in reading order. Callers tag
+each text item with its page number; `toCells` applies the offset. All the
+banding logic then works unchanged.
+
+Header labels are also dropped by text, in case a longer picklist repeats the
+header row on later pages.
+
+Pinned by `test/multipage.test.mjs` against a real two-page picklist.
+
+### 2.6 The Total Quantity line
 
 A `Total Quantity` line sits in the same x column as the SKUs and must not be
 read as one. Row banding is clamped between the header and this line.
@@ -327,6 +353,7 @@ No browser, no Myntra login, no dependencies.
 |---|---|
 | `parse.test.mjs` | A real picklist PDF → exact SKUs, sizes, quantities; the mid-hyphen join |
 | `multiqty.test.mjs` | Quantity > 1, the same SKU on two lines, total mismatch warning, unit splitting, the quantity clamp |
+| `multipage.test.mjs` | A real two-page picklist: 9 rows in page order, three brand prefixes, quantities totalling the stated 10 |
 | `barcode.test.mjs` | Barcode → `OP22355506`; mirrored; 4× upscaled; noise and blank → `null`; JPEG extraction from the PDF |
 | `layout.test.mjs` | One scrolling area, pinned top section, scroll-margin, element order |
 
@@ -334,8 +361,9 @@ No browser, no Myntra login, no dependencies.
 
 They pin the failure modes that would be **silent and expensive**: a corrupted
 seller SKU ships the wrong garment, a mis-decoded barcode opens the wrong
-picklist, a runaway quantity freezes the panel, and a broken flex chain makes
-the toolbar unreachable. None of them throw an error on their own.
+picklist, a second page reads as nothing, a runaway quantity freezes the panel,
+and a broken flex chain makes the toolbar unreachable. None of them throw an
+error on their own.
 
 ---
 
@@ -348,7 +376,7 @@ the toolbar unreachable. None of them throw an error on their own.
 | No check that the garment matches the row | Only scanning the barcode on the physical tag can do this. The panel removes typing and tab-switching, not mis-pick risk. |
 | The size badge is inferred | Taken as the last `-` segment of the seller SKU. Verified against Myntra's own page for `RRC-012-CO-CI-RED-GRN-F-M` → `M`. If any SKU does not end with its size, the badge will be wrong. |
 | Myntra changing the input placeholder | Fails loudly ("That box isn't on the pack page right now"), never silently. |
-| `test/fixtures/picklist-sample.pdf` is real order data | Fine in a private repo. Remove it before making this public. |
+| `test/fixtures/*.pdf` are real order data | Fine in a private repo. Remove them before making this public. |
 
 ---
 

@@ -2,6 +2,14 @@
 // No DOM and no chrome.* in here, so test/parse.test.mjs can run it under plain Node.
 
 const SKU_RE = /^[A-Z]{3,}\d{6,}$/;
+// Each PDF page restarts its coordinates at the top, so page 2's y values sit
+// ABOVE page 1's. Shifting every page down by more than a page height makes y
+// decrease continuously in reading order, which is what the row banding below
+// assumes. Without this, a picklist that spills onto a second page reads as
+// nothing at all.
+const PAGE_SPAN = 5000;
+// Column headings and the totals line, which must never be read as row content.
+const LABEL_RE = /^(myntra sku code|seller sku|code|product description|quantity|expiry|dates|total quantity)$/i;
 const X_TOLERANCE = 6;      // cells in one column share an x almost exactly
 const EDGE_MARGIN = 2;      // keeps header/total lines out of the first/last band
 
@@ -17,7 +25,7 @@ function toCells(textItems) {
     .map((it) => ({
       text: typeof it.str === 'string' ? it.str : String(it.text ?? ''),
       x: it.transform ? it.transform[4] : it.x,
-      y: it.transform ? it.transform[5] : it.y,
+      y: (it.transform ? it.transform[5] : it.y) - ((it.page ?? 1) - 1) * PAGE_SPAN,
     }))
     .filter((c) => c.text.trim() !== '' && Number.isFinite(c.x) && Number.isFinite(c.y));
 }
@@ -90,8 +98,8 @@ export function parsePicklist(textItems) {
 
   const headerYs = findY(cells, /^myntra\s*sku/i);
   const totalYs = findY(cells, /^total\s*quantity/i);
-  const headerFloor = headerYs ? Math.min(...headerYs) : Infinity;
-  const totalCeil = totalYs ? Math.max(...totalYs) : -Infinity;
+  const headerFloor = headerYs ? Math.max(...headerYs) : Infinity;
+  const totalCeil = totalYs ? Math.min(...totalYs) : -Infinity;
 
   const bands = rowBands(anchors, headerFloor, totalCeil);
 
@@ -99,6 +107,7 @@ export function parsePicklist(textItems) {
   const grid = bands.map(() => centres.map(() => []));
   for (const cell of cells) {
     if (cell.y >= headerFloor - EDGE_MARGIN || cell.y <= totalCeil + EDGE_MARGIN) continue;
+    if (LABEL_RE.test(cell.text.trim())) continue; // a header repeated on page 2
     const r = bands.findIndex((b) => cell.y <= b.top && cell.y > b.bottom);
     if (r === -1) continue;
     grid[r][nearestColumn(cell.x, centres)].push(cell);

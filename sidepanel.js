@@ -288,7 +288,9 @@ async function parsePdf(bytes) {
   const items = [];
   for (let p = 1; p <= doc.numPages; p += 1) {
     const page = await doc.getPage(p);
-    items.push(...(await page.getTextContent()).items);
+    // The page number matters: the parser uses it to stop page 2's coordinates
+    // colliding with page 1's.
+    items.push(...(await page.getTextContent()).items.map((it) => ({ ...it, page: p })));
   }
   return parsePicklist(items);
 }

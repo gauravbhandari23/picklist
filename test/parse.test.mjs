@@ -16,7 +16,7 @@ const doc = await pdfjs.getDocument({ data, useWorkerFetch: false, isEvalSupport
 const items = [];
 for (let p = 1; p <= doc.numPages; p += 1) {
   const page = await doc.getPage(p);
-  items.push(...(await page.getTextContent()).items);
+  items.push(...(await page.getTextContent()).items.map((it) => ({ ...it, page: p })));
 }
 
 const { rows, warnings } = parsePicklist(items);
