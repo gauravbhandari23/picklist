@@ -412,26 +412,22 @@ error on their own.
 
   Two things about Chrome cost real time to work out, and are worth recording:
 
-  1. **A command-line flag is only read when Chrome starts a new process.** With
-     any Chrome already running — including the background process that
-     survives closing every window — a shortcut opens a window in the old
-     process and the flag is silently dropped. `chrome://version`'s
-     **Command Line** row is the only reliable way to tell.
-     `windows/start-packing-chrome.bat` closes Chrome first, so the flag always
-     applies.
-  2. **Chrome prints to the last printer it used, not the Windows default.**
-     Setting PDFCreator as the Windows default does nothing on its own. The
-     `PrintPreviewUseSystemDefaultPrinter` policy makes Chrome follow Windows
-     instead; `windows/chrome-use-system-default-printer.reg` sets it.
+  1. **A command-line flag is only read when Chrome starts a new browser
+     process.** With any Chrome already running — including the background
+     process that survives closing every window — the flag is silently dropped.
+     `chrome://version`'s **Command Line** row is the only reliable way to tell.
+  2. **Chrome runs one browser process per user-data-dir**, and profiles inside
+     one user-data-dir share it. So `--profile-directory` joins the existing
+     process and the flag is ignored; **`--user-data-dir`** starts a genuinely
+     separate instance and the flag applies. It also gives that instance its own
+     remembered printer — Chrome prints to the last printer *it* used, not the
+     Windows default — which is what lets the packing Chrome and the ordinary
+     one print to different places at the same time.
 
-  Together these remove the reason for a separate Chrome profile, which existed
-  only to force a new process and isolate the remembered printer.
+  So the packing Chrome is a separate instance, not a separate profile, and
+  nothing about the machine's printing is changed outside it. See
+  [SETUP.md](SETUP.md) and `windows/`.
 
-  Worth recording why no code could do it better: Chrome's silent printing
-  always targets the **system default printer** and cannot be pointed at
-  Chrome's own "Save as PDF", so a virtual PDF printer is unavoidable. And an
-  extension could not improve the filenames either — `chrome.downloads` may
-  only write inside the Downloads folder, never Documents.
 - **Packing history / CSV export.** Sounds useful, would never be opened.
 
 ---

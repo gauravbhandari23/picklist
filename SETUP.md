@@ -141,66 +141,57 @@ this is why.
 Also worth setting while you are in the profile: turn **off** opening the
 document after saving, under the same Save section.
 
-### B2b. Two fixes that make this reliable without a second Chrome profile
+### B2b. Set up the packing Chrome
 
-Silent printing has two ways to go quietly wrong on a shared profile. Both are
-fixed once, and then never thought about again. The files are in the
-`windows/` folder of this repo — copy them to the packing PC.
+The packing Chrome is a **separate Chrome instance**. Both can be open at once,
+and neither affects the other:
 
-#### Fix 1 — one icon that turns packing mode on and off
-
-`windows/start-packing-chrome.bat` does four things:
-
-1. Remembers the printer you normally use
-2. Switches the Windows default to **PDFCreator**
-3. Closes Chrome properly, then starts it with `--kiosk-printing`
-4. Waits, and **puts your normal printer back the moment you close Chrome**
-
-So the PDF printer is only in force while you are actually packing. Close
-Chrome and ordinary printing on the PC is exactly as it was.
-
-It closes Chrome first because **a flag is only read when Chrome starts a new
-process.** Any Chrome still running — including the background process that
-survives closing every window — makes the flag be ignored, silently. That is
-the single most common reason silent printing "stops working".
-
-**Keep the black window open while you pack.** That window is what puts your
-printer back. It also tells you at a glance that packing mode is on.
-
-If it ever gets interrupted — window closed, PC restarted — run
-`windows/restore-printer.bat` to put your normal printer back.
-
-#### Fix 2 — make Chrome obey the Windows default at all
-
-Chrome prints to the **last printer it used**, remembered per profile, not the
-Windows default. That is why setting PDFCreator as the Windows default does
-nothing on its own, and why the script above would not be enough by itself.
-
-`windows/chrome-use-system-default-printer.reg` sets Chrome's
-`PrintPreviewUseSystemDefaultPrinter` policy, which makes Chrome follow the
-Windows default instead of its own memory:
-
-```
-[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome]
-"PrintPreviewUseSystemDefaultPrinter"=dword:00000001
-```
-
-Double-click it, approve the prompt, restart Chrome. One time only.
-
-**Both are needed.** The `.reg` makes Chrome follow Windows; the `.bat` decides
-what Windows points at, and only while you are packing.
-
-#### Together
-
-| | While packing | Rest of the time |
+| | Packing Chrome | Normal Chrome |
 |---|---|---|
-| Chrome started by | the .bat | normally |
-| Print preview | skipped | appears as usual |
-| Goes to | PDFCreator, saved as PDF | your normal printer |
-| Word, Excel, anything else | PDFCreator | your normal printer |
+| Opened by | `start-packing-chrome.bat` | as always |
+| Print preview | skipped | appears |
+| Prints to | **PDFCreator**, saved as PDF | **whatever printer you pick** |
+| Bookmarks, logins | just Myntra | untouched |
 
-The switch lasts exactly as long as the packing Chrome is open. Nothing is left
-changed afterwards, so this needs no separate Chrome profile.
+Nothing is switched back and forth. No closing Chrome, no black window to keep
+open, no registry change.
+
+#### Why `--user-data-dir` and not `--profile-directory`
+
+This is the detail the whole thing rests on.
+
+A Chrome flag is only read when Chrome starts a **new browser process**.
+Chrome runs **one browser process per user-data-dir** — profiles inside one
+user-data-dir share that process. So `--profile-directory` would join the Chrome
+already running and `--kiosk-printing` would be silently ignored, which is
+exactly the failure that is hard to diagnose.
+
+`--user-data-dir` starts a genuinely separate instance, so the flag always
+applies. It also gives that instance its own remembered printer, which is what
+lets the two Chromes print to different places.
+
+#### Run once: `windows\setup-packing-chrome.bat`
+
+It opens the packing Chrome **without** silent printing, so you still get a
+print preview. In the window that opens:
+
+1. **Log in to Myntra**
+2. **Install the extension** — `chrome://extensions` → Developer mode →
+   Load unpacked → the `myntra-picklist-panel` folder
+3. **Teach it the printer** — open any page, **Ctrl+P**, set Destination to
+   **PDFCreator**, click **Print**
+
+Step 3 is what makes labels go to PDF afterwards. The packing Chrome remembers
+its own printer, separately from your normal Chrome.
+
+The profile lives in `%LOCALAPPDATA%\ChromePacking`.
+
+#### Every day: `windows\start-packing-chrome.bat`
+
+Double-click it. Right-click → **Pin to taskbar** to keep it handy.
+
+That is the whole routine. Labels save silently; everything else on the PC
+prints normally.
 
 ### B2a. Prove it works before doing the rest
 
@@ -215,49 +206,6 @@ Did a PDF land in the folder with no dialog?
 
 - **yes** — it works, carry on
 - **no** — stop, and report what appeared instead
-
-### B3. Make PDFCreator the Windows default printer
-
-Windows → **Settings → Bluetooth & devices → Printers & scanners**
-
-1. Turn **OFF** "Let Windows manage my default printer"
-   ← easy to miss, and Windows will undo your choice if you leave it on
-2. Click **PDFCreator** → **Set as default**
-
-### B4. Add the flag to your Chrome shortcut
-
-Right-click your Chrome shortcut → **Properties** → **Target**, add
-`--kiosk-printing` to the end:
-
-```
-"C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing
-```
-
-This is the only way. Chrome's silent printing always goes to the **system
-default printer** — it cannot be pointed at Chrome's own "Save as PDF". That is
-why a virtual PDF printer is needed rather than a Chrome setting alone.
-
-**The trade-off:** every tab in Chrome now prints silently. Ctrl+P on any site
-saves a PDF to the Labels folder instead of showing a preview.
-
-### B5. Make sure the flag actually applies
-
-A Chrome flag only takes effect when Chrome **starts fresh**. If Chrome is
-already running, the shortcut opens another window in the existing process and
-the flag is ignored.
-
-1. Chrome → **Settings → System** → turn **OFF**
-   "Continue running background apps when Chrome is closed"
-2. **Close every Chrome window**
-3. Open Chrome from that shortcut
-
-Then check: type `chrome://version` in the address bar and read the
-**Command Line** row.
-
-- `--kiosk-printing` is in it → active
-- not there → Chrome was already running. Close everything and relaunch.
-
-That is a definite answer. Check it before blaming anything else.
 
 ### B6. Test — one order only
 
