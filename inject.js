@@ -92,6 +92,7 @@
   const origPrint = window.print;
   window.print = function (...args) {
     const fresh = Date.now() - lastCaptureAt < PRINT_GRACE_MS;
+    log('window.print called. autosave =', autosaveOn, '| captured recently =', fresh);
     if (autosaveOn && fresh) {
       log('print skipped — the document was already saved by autosave');
       return undefined;
@@ -99,6 +100,52 @@
     log('printing normally', autosaveOn ? '(nothing captured to save)' : '(autosave off)');
     return origPrint.apply(this, args);
   };
+
+  // The two Save dialogs did not come from window.print() in this page, so the
+  // document must be opened somewhere else to be printed. Watch for that, and
+  // once autosave has the document, do not open it at all.
+  const origOpen = window.open;
+  window.open = function (url, ...rest) {
+    const target = String(url ?? '');
+    log('window.open ->', target || '(no url)');
+    const fresh = Date.now() - lastCaptureAt < PRINT_GRACE_MS;
+    if (target && LABEL_RE.test(target) && autosaveOn && fresh) {
+      log('window.open skipped — that document was already saved by autosave');
+      // A stub, so page code calling .print() or .close() on the result does
+      // not throw. Returning null outright breaks some callers.
+      return {
+        closed: false,
+        close() {},
+        focus() {},
+        blur() {},
+        print() {
+          log('print() on the skipped window ignored');
+        },
+        document: { write() {}, close() {}, open() {} },
+      };
+    }
+    return origOpen.call(this, url, ...rest);
+  };
+
+  // And report anything embedded that points at a label, so we can see whether
+  // an iframe or an embed is being used instead.
+  try {
+    const watchNode = (node) => {
+      const src = node.getAttribute?.('src') || node.getAttribute?.('data') || '';
+      if (src && LABEL_RE.test(src)) log('element added pointing at a label:', node.tagName, src);
+      node.querySelectorAll?.('[src],[data]').forEach((el) => {
+        const s2 = el.getAttribute('src') || el.getAttribute('data') || '';
+        if (s2 && LABEL_RE.test(s2)) log('nested element pointing at a label:', el.tagName, s2);
+      });
+    };
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) if (node.nodeType === 1) watchNode(node);
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  } catch {
+    /* observing is best effort */
+  }
 
   const origFetch = window.fetch;
   window.fetch = function (...args) {

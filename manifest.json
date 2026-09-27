@@ -32,7 +32,8 @@
   "content_scripts": [
     {
       "matches": [
-        "*://mdirect.myntrainfo.com/PackOrder/*"
+        "*://mdirect.myntrainfo.com/PackOrder/*",
+        "*://partnersapi.myntrainfo.com/*"
       ],
       "js": [
         "content.js"
@@ -42,7 +43,8 @@
     },
     {
       "matches": [
-        "*://mdirect.myntrainfo.com/PackOrder/*"
+        "*://mdirect.myntrainfo.com/PackOrder/*",
+        "*://partnersapi.myntrainfo.com/*"
       ],
       "js": [
         "inject.js"
