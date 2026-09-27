@@ -18,11 +18,17 @@
   // Stamped so the console says which build a tab is actually running. A tab
   // that was not reloaded keeps the previous inject.js, and the symptom — some
   // log lines present, others missing — is otherwise very hard to read.
-  const BUILD = '2026-09-27d qz-deep-diagnostics';
+  const BUILD = '2026-09-27e top-frame-only';
 
   const startedAt = Date.now();
-  const where =
-    window === window.top ? 'top' : `frame<${String(location.href).slice(0, 70)}>`;
+  // Cross-origin frames can make either of these throw. Nothing here is worth
+  // losing the whole script over.
+  let where = 'page';
+  try {
+    where = window === window.top ? 'top' : `frame<${String(location.href).slice(0, 70)}>`;
+  } catch {
+    where = 'frame<cross-origin>';
+  }
   // The millisecond offset matters: whether autosave arrives before QZ Tray is
   // contacted decides whether it can be refused at all.
   const log = (...a) => console.log(`[picklist +${Date.now() - startedAt}ms]`, where, ...a);
