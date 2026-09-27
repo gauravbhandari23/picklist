@@ -12,6 +12,12 @@
   if (window.__myntraLabelWatch) return;
   window.__myntraLabelWatch = true;
 
+  // Deliberately noisy: when autosave does not fire, these lines in the page
+  // console are the fastest way to see whether this script ran at all, whether
+  // it saw the request, and how the response came back.
+  const log = (...a) => console.log('[picklist]', ...a);
+  log('watching for label requests');
+
   const LABEL_RE = /getShippingLabelForSellerPacket|getPacketInvoice/i;
   const PACKET_RE = /ready-to-ship/i;
 
@@ -27,6 +33,7 @@
   };
 
   const notePacket = (text) => {
+    log('packet response seen');
     try {
       const body = JSON.parse(text);
       const row = Array.isArray(body?.data) ? body.data[0] : body?.data;
@@ -59,14 +66,17 @@
     return btoa(binary);
   };
 
-  const send = (url, body) =>
+  const send = (url, body) => {
+    log('label document', { url: absolute(url), bytes: body ? body.length : 0, packet });
     post({ type: 'LABEL_DOC', url: absolute(url), packet, body: body ?? null });
+  };
 
   const origFetch = window.fetch;
   window.fetch = function (...args) {
     const url = typeof args[0] === 'string' ? args[0] : args[0]?.url;
     const out = origFetch.apply(this, args);
     if (!url) return out;
+    if (LABEL_RE.test(url)) log('fetch ->', url);
     return out.then((res) => {
       try {
         if (PACKET_RE.test(url)) {
@@ -98,6 +108,7 @@
       try {
         const url = this.__myntraUrl;
         if (!url) return;
+        if (LABEL_RE.test(url)) log('xhr ->', url);
         if (PACKET_RE.test(url)) {
           notePacket(this.responseText);
           return;

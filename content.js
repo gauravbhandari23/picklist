@@ -97,6 +97,7 @@ if (!window.__myntraPicklistPanel) {
     if (event.source !== window) return;
     const msg = event.data;
     if (msg?.__myntraPicklistPanel !== true || msg.type !== 'LABEL_DOC') return;
+    console.log('[picklist] relaying label document to the extension');
     chrome.runtime
       .sendMessage({ type: 'LABEL_DOC', url: msg.url, packet: msg.packet, body: msg.body })
       .catch(() => {});
