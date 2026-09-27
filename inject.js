@@ -149,6 +149,40 @@
     }
   };
 
+  // Nothing in the browser prints these documents — no beforeprint, no
+  // window.print, no iframe. The page talks to QZ Tray, a native printing app,
+  // over a WebSocket on localhost, and QZ Tray prints through Windows. That is
+  // what raises the dialog. Log that traffic to confirm it and learn the
+  // protocol; nothing is blocked here yet, because dropping a request QZ's
+  // client is awaiting could hang the pack flow.
+  try {
+    const OriginalWebSocket = window.WebSocket;
+    const PrintServiceSocket = function (url, ...rest) {
+      const socket = new OriginalWebSocket(url, ...rest);
+      if (/localhost|127\.0\.0\.1|qz/i.test(String(url))) {
+        log('*** WebSocket opened to a local print service:', String(url));
+        const originalSend = socket.send.bind(socket);
+        socket.send = function (data) {
+          const body = typeof data === 'string' ? data : `(${typeof data})`;
+          log('*** print service <- ', body.slice(0, 300));
+          return originalSend(data);
+        };
+        socket.addEventListener('message', (event) => {
+          const body = typeof event.data === 'string' ? event.data : `(${typeof event.data})`;
+          log('*** print service -> ', body.slice(0, 200));
+        });
+      }
+      return socket;
+    };
+    PrintServiceSocket.prototype = OriginalWebSocket.prototype;
+    for (const k of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) {
+      PrintServiceSocket[k] = OriginalWebSocket[k];
+    }
+    window.WebSocket = PrintServiceSocket;
+  } catch {
+    /* leave the page's own socket alone if anything here fails */
+  }
+
   const origWindowOpen = window.open;
   window.open = function (url, ...rest) {
     const target = String(url ?? '');

@@ -484,6 +484,21 @@ Constraints worth remembering:
   failed capture must never leave someone with no document and no dialog.
 - Content scripts run with `all_frames: true`, since a label printed from an
   iframe would otherwise miss the override entirely.
+- **The browser is not what prints these documents.** A packed order produces no
+  `beforeprint`, no `window.print`, no `window.open` and no iframe — yet the two
+  Save dialogs still appear. The page connects to **QZ Tray**, a native printing
+  application, over `wss://localhost:8181`, and QZ Tray prints through Windows.
+  With Microsoft Print to PDF as the Windows default, that is what raises the
+  dialog.
+
+  This is why the whole `--kiosk-printing` effort could never have worked:
+  Chrome was never printing. It also explains the files it produced, whose
+  Producer field read *"Microsoft: Print To PDF"*.
+
+  Quitting QZ Tray from the system tray stops it. Suppressing it from the page
+  would mean intercepting that WebSocket, which is riskier than it looks: QZ's
+  client awaits a reply per request, so silently dropping one could hang the
+  pack flow. The traffic is logged for now rather than blocked.
 - **The documents are re-paged before saving.** Myntra serves the label at 4x6in
   and the invoice at A4, but the old route re-printed both through Microsoft
   Print to PDF onto the Windows default paper, so the files people are used to
