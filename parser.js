@@ -3,11 +3,15 @@
 
 const SKU_RE = /^[A-Z]{3,}\d{6,}$/;
 // Each PDF page restarts its coordinates at the top, so page 2's y values sit
-// ABOVE page 1's. Shifting every page down by more than a page height makes y
-// decrease continuously in reading order, which is what the row banding below
-// assumes. Without this, a picklist that spills onto a second page reads as
-// nothing at all.
-const PAGE_SPAN = 5000;
+// ABOVE page 1's. Every page is shifted down by more than one page height, so y
+// decreases continuously in reading order however many pages there are — which
+// is what the row banding below assumes. Without this, a picklist that spills
+// past page 1 reads as nothing at all.
+const PAGE_GAP = 1000;
+// How far a row may reach from its anchor when there is no same-page neighbour
+// to measure against. Comfortably covers a long wrapped description, and
+// nowhere near the foot of a sheet.
+const DEFAULT_REACH = 60;
 // Column headings and the totals line, which must never be read as row content.
 const LABEL_RE = /^(myntra sku code|seller sku|code|product description|quantity|expiry|dates|total quantity)$/i;
 const X_TOLERANCE = 6;      // cells in one column share an x almost exactly
@@ -21,13 +25,35 @@ const JOIN = {
 };
 
 function toCells(textItems) {
-  return textItems
+  const raw = textItems
     .map((it) => ({
       text: typeof it.str === 'string' ? it.str : String(it.text ?? ''),
       x: it.transform ? it.transform[4] : it.x,
-      y: (it.transform ? it.transform[5] : it.y) - ((it.page ?? 1) - 1) * PAGE_SPAN,
+      y: it.transform ? it.transform[5] : it.y,
+      page: Math.max(1, Math.trunc(it.page ?? 1)),
     }))
     .filter((c) => c.text.trim() !== '' && Number.isFinite(c.x) && Number.isFinite(c.y));
+
+  if (!raw.length) return raw;
+  // Measured from the document rather than assumed, so an unusual page size
+  // cannot make two pages overlap.
+  const span = Math.max(...raw.map((c) => c.y)) + PAGE_GAP;
+  return raw.map((c) => ({ ...c, y: c.y - (c.page - 1) * span }));
+}
+
+// Typical distance between rows, used to stop a row reaching across a page
+// break and picking up a footer. Only gaps between rows on the SAME page count:
+// a picklist with one row per page has nothing but page-break gaps, and taking
+// their median would make the reach enormous.
+function rowReach(anchors) {
+  const gaps = [];
+  for (let i = 1; i < anchors.length; i += 1) {
+    if (anchors[i].page !== anchors[i - 1].page) continue;
+    gaps.push(anchors[i - 1].y - anchors[i].y);
+  }
+  if (!gaps.length) return DEFAULT_REACH;
+  gaps.sort((a, b) => a - b);
+  return gaps[Math.floor(gaps.length / 2)];
 }
 
 // Group x values that repeat down the page into column centres, left to right.
@@ -67,13 +93,18 @@ function findY(cells, re) {
 // The first and last bands are clamped to the header and the "Total Quantity"
 // line so neither can leak into a row.
 function rowBands(anchors, headerFloor, totalCeil) {
+  const reach = rowReach(anchors);
   return anchors.map((a, i) => {
     const above = anchors[i - 1];
     const below = anchors[i + 1];
-    const pitch = above ? above.y - a.y : below ? a.y - below.y : 80;
-    const top = above ? (above.y + a.y) / 2 : Math.min(headerFloor - EDGE_MARGIN, a.y + pitch / 2);
-    const bottom = below ? (a.y + below.y) / 2 : Math.max(totalCeil + EDGE_MARGIN, a.y - pitch / 2);
-    return { anchor: a, top, bottom };
+    // A row owns the space up to halfway to its neighbours, but never more than
+    // one row-height away — otherwise the last row on a page would reach across
+    // the break and pick up anything at the bottom of the sheet.
+    const tops = [a.y + reach, headerFloor - EDGE_MARGIN];
+    const bottoms = [a.y - reach, totalCeil + EDGE_MARGIN];
+    if (above) tops.push((above.y + a.y) / 2);
+    if (below) bottoms.push((a.y + below.y) / 2);
+    return { anchor: a, top: Math.min(...tops), bottom: Math.max(...bottoms) };
   });
 }
 
@@ -116,11 +147,18 @@ export function parsePicklist(textItems) {
   // Quantity is the rightmost column whose every value is a plain integer.
   // Deriving it from the data beats trusting the header, whose x is offset
   // from the values it sits above.
-  let qtyCol = -1;
+  const digitCols = [];
   for (let c = 1; c < centres.length; c += 1) {
-    const values = grid.map((row) => joinColumn(row[c], JOIN.glue)).filter(Boolean);
-    if (values.length === grid.length && values.every((v) => /^\d+$/.test(v))) qtyCol = c;
+    const filled = grid.map((row) => joinColumn(row[c], JOIN.glue)).filter(Boolean);
+    if (!filled.length || !filled.every((v) => /^\d+$/.test(v))) continue;
+    digitCols.push({ c, coverage: filled.length / grid.length });
   }
+  // A column every row fills is the quantity; only if none exists do we settle
+  // for one most rows fill. Rightmost wins, since Expiry sits further right and
+  // is never all digits.
+  const whole = digitCols.filter((d) => d.coverage === 1);
+  const chosen = (whole.length ? whole : digitCols.filter((d) => d.coverage >= 0.5)).pop();
+  const qtyCol = chosen ? chosen.c : -1;
   if (qtyCol === -1) warnings.push('Could not find the Quantity column — every row was read as qty 1.');
 
   const descEnd = qtyCol === -1 ? centres.length : qtyCol;

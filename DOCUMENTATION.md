@@ -108,15 +108,28 @@ Merging the pages into one list made the row-banding cutoffs read as
 out completely empty, so every row reported *no seller SKU found* and the
 quantity column was never located.
 
-The fix is to shift each page down by more than a page height
-(`PAGE_SPAN = 5000`) so y decreases continuously in reading order. Callers tag
-each text item with its page number; `toCells` applies the offset. All the
-banding logic then works unchanged.
+The fix has three parts, and none of them assume a page count:
 
-Header labels are also dropped by text, in case a longer picklist repeats the
-header row on later pages.
+1. **Continuous coordinates.** Callers tag each text item with its page number,
+   and `toCells` shifts each page down by the document's own height plus a gap
+   — measured, not a constant — so y decreases continuously however many pages
+   there are.
+2. **Bands clamped to a row height.** A row owns the space up to halfway to its
+   neighbours, but never more than one row-height away. Without this the last
+   row on a page reaches across the break and swallows whatever sits at the
+   foot of the sheet. The row height is the median gap between anchors **on the
+   same page** — a picklist with one row per page has nothing but page-break
+   gaps, and their median would make the reach enormous.
+3. **Labels dropped by text**, so a header repeated on later pages is ignored
+   rather than read as a row.
 
-Pinned by `test/multipage.test.mjs` against a real two-page picklist.
+The quantity column is likewise chosen as a column *every* row fills, falling
+back to one most rows fill, so a single odd page cannot lose it.
+
+Pinned two ways: `test/multipage.test.mjs` against a real two-page picklist, and
+`test/manypages.test.mjs` against synthetic picklists of 1, 2, 3, 4, 5, 10 and
+20 pages — with and without repeated headers, with and without page footers,
+and the awkward case of one row per page.
 
 ### 2.6 The Total Quantity line
 
@@ -354,6 +367,7 @@ No browser, no Myntra login, no dependencies.
 | `parse.test.mjs` | A real picklist PDF → exact SKUs, sizes, quantities; the mid-hyphen join |
 | `multiqty.test.mjs` | Quantity > 1, the same SKU on two lines, total mismatch warning, unit splitting, the quantity clamp |
 | `multipage.test.mjs` | A real two-page picklist: 9 rows in page order, three brand prefixes, quantities totalling the stated 10 |
+| `manypages.test.mjs` | 1–20 pages, repeated headers, page footers, mixed quantities, one row per page |
 | `barcode.test.mjs` | Barcode → `OP22355506`; mirrored; 4× upscaled; noise and blank → `null`; JPEG extraction from the PDF |
 | `layout.test.mjs` | One scrolling area, pinned top section, scroll-margin, element order |
 
