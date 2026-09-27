@@ -246,7 +246,8 @@ also works on an upscaled or mirrored image (both tested).
 | `parser.js` | PDF text items → rows; unit expansion | ✅ no DOM, no `chrome.*` |
 | `barcode.js` | Code 128 decoder; JPEG extraction from PDF bytes | ✅ no DOM, no `chrome.*` |
 | `content.js` | Fills fields on the pack page | — |
-| `lib/` | pdf.js 4.10.38, vendored | — |
+| `repaginate.js` | Puts a document on a standard sheet. Pure apart from pdf-lib |
+| `lib/` | pdf.js 4.10.38 and pdf-lib 1.17.1, vendored | — |
 | `test/` | Node tests, no browser needed | — |
 
 `parser.js` and `barcode.js` are deliberately pure — that is what makes the
@@ -483,6 +484,16 @@ Constraints worth remembering:
   failed capture must never leave someone with no document and no dialog.
 - Content scripts run with `all_frames: true`, since a label printed from an
   iframe would otherwise miss the override entirely.
+- **The documents are re-paged before saving.** Myntra serves the label at 4x6in
+  and the invoice at A4, but the old route re-printed both through Microsoft
+  Print to PDF onto the Windows default paper, so the files people are used to
+  are Letter sized. `repaginate.js` puts both on one sheet (Letter by default,
+  A4 or Original also offered) using pdf-lib, scaled to fit and centred.
+
+  Measured against the real files: a print-to-PDF copy of the label was 1.4 MB
+  with **no text layer at all**, having been rasterised. Re-paging the original
+  gives 22 KB and keeps the text searchable. So matching the old page size costs
+  nothing and the result is strictly better than what it replaces.
 - A tab opened *before* the extension loaded needs **both** scripts injected on
   demand — `content.js` and `inject.js` in the MAIN world. Injecting only the
   first fills SKUs fine but never sees a label, which would look like autosave

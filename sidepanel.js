@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 const els = {
   subtitle: $('subtitle'), picklistId: $('picklistId'), doneCount: $('doneCount'), totalCount: $('totalCount'),
   close: $('close'), pick: $('pick'), reset: $('reset'), clear: $('clear'),
-  fillMode: $('fillMode'), autosave: $('autosave'),
+  fillMode: $('fillMode'), autosave: $('autosave'), pageSize: $('pageSize'),
   status: $('status'), warnings: $('warnings'), drop: $('drop'), rows: $('rows'), file: $('file'),
 };
 
@@ -370,6 +370,15 @@ els.fillMode.addEventListener('change', () => {
 
 // Kept as its own storage key, not part of the picklist: the service worker
 // reads it directly, and it must survive Clear.
+els.pageSize.addEventListener('change', () => {
+  chrome.storage.local.set({ pageSize: els.pageSize.value });
+  status(
+    els.pageSize.value === 'original'
+      ? 'Saving at Myntra\'s own size — label 4x6in, bill A4.'
+      : `Saving on ${els.pageSize.value === 'a4' ? 'A4' : 'Letter'} pages.`,
+  );
+});
+
 els.autosave.addEventListener('change', () => {
   const on = els.autosave.checked;
   chrome.storage.local.set({ autosave: on });
@@ -414,8 +423,9 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
 });
 
-const stored = await chrome.storage.local.get(['picklist', 'autosave']);
+const stored = await chrome.storage.local.get(['picklist', 'autosave', 'pageSize']);
 els.autosave.checked = stored.autosave === true;
+els.pageSize.value = stored.pageSize ?? 'letter';
 state = { ...EMPTY, ...(stored.picklist ?? {}) };
 // Older saved state kept a line per SKU with a quantity; split it into units.
 if (state.rows.some((r) => (r.qty ?? 1) > 1 || r.units === undefined)) state.rows = expandUnits(state.rows);

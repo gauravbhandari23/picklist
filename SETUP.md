@@ -140,6 +140,27 @@ To have them somewhere else, change Chrome's own download location:
 Also make sure **"Ask where to save each file before downloading"** is **off**,
 or Chrome will prompt for every file.
 
+### Page size
+
+```
+Load file  Reset  Clear   [x] Autosave   Page [Letter]  Fill [Myntra SKU]
+```
+
+Myntra serves the label at **4 x 6 in** and the bill at **A4**. The old route
+re-printed both through Microsoft Print to PDF onto whatever the Windows
+default paper was, which is why they came out Letter sized.
+
+**Letter** (the default) puts both on 8.5 x 11 in pages, so they print exactly
+as they used to. **A4** does the same on A4. **Original** saves Myntra's own
+sizes untouched — worth choosing if you print labels on a 4 x 6 thermal
+printer, since they then need no scaling.
+
+The content is scaled to fit and centred, never stretched.
+
+Re-paging is not a re-print: the files stay a fraction of the size (about 20 KB
+against 1.4 MB) and keep a searchable text layer, which a print-to-PDF copy
+loses.
+
 The two documents do not arrive in the same shape — the bill is a plain PDF
 while the label comes wrapped in a MIME envelope — so the label is unwrapped
 before saving. Both end up as ordinary PDFs.

@@ -6,6 +6,7 @@
 // print dialog to suppress, and the packet id can go in the filename.
 
 import { classifyLabelUrl, labelFilename, idsFromLabelUrl, planSave, describePayload } from './labels.js';
+import { repaginate, SHEETS } from './repaginate.js';
 
 const PACK_URL = '*://mdirect.myntrainfo.com/PackOrder/*';
 const FILL_TYPES = new Set(['FILL', 'FILL_PICKLIST']);
@@ -146,6 +147,19 @@ async function saveLabel({ url, packet, body, contentType = '' }) {
       return;
     }
 
+    // Myntra serves the label at 4x6in and the invoice at A4. Put both on one
+    // sheet size so they print the way the old route did.
+    let outBytes = base64ToBytes(plan.base64);
+    const { pageSize = 'letter' } = await chrome.storage.local.get('pageSize');
+    if (SHEETS[pageSize]) {
+      try {
+        outBytes = await repaginate(outBytes, pageSize);
+        tellPage(kind, '- re-paged onto', SHEETS[pageSize].label);
+      } catch (err) {
+        tellPage(kind, '- could not re-page, saving the original:', err?.message ?? err);
+      }
+    }
+
     const fromUrl = idsFromLabelUrl(url);
     const filename = labelFilename({
       kind,
@@ -157,7 +171,7 @@ async function saveLabel({ url, packet, body, contentType = '' }) {
       plan.unwrapped ? '(unwrapped from its MIME envelope)' : '(bare PDF)');
 
     const downloadId = await chrome.downloads.download({
-      url: `data:application/pdf;base64,${plan.base64}`,
+      url: `data:application/pdf;base64,${bytesToBase64(outBytes)}`,
       filename,
       conflictAction: 'uniquify', // Chrome appends (1), (2)… so nothing is lost
       saveAs: false,
