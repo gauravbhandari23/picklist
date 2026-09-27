@@ -495,10 +495,19 @@ Constraints worth remembering:
   Chrome was never printing. It also explains the files it produced, whose
   Producer field read *"Microsoft: Print To PDF"*.
 
-  Quitting QZ Tray from the system tray stops it. Suppressing it from the page
-  would mean intercepting that WebSocket, which is riskier than it looks: QZ's
-  client awaits a reply per request, so silently dropping one could hang the
-  pack flow. The traffic is logged for now rather than blocked.
+  With autosave on, the extension **refuses that WebSocket**, so QZ Tray looks
+  absent and no print happens. Dropping the print job mid-conversation was
+  rejected as an approach: QZ's client awaits a reply per request and would
+  hang. Refusing the connection is a path the page already handles well —
+  observed directly with QZ Tray quit, where packing completed normally and
+  only the dialogs disappeared, which is what makes this safe.
+
+  The refusal is a stub socket that fires `error` then `close` after a tick,
+  exactly as a closed port does. QZ's client then walks its other ports (8181,
+  8282, 8383, 8484, and the same on `localhost.qz.io`), each refused the same
+  way, and gives up.
+
+  With autosave off, QZ Tray is left entirely alone.
 - **The documents are re-paged before saving.** Myntra serves the label at 4x6in
   and the invoice at A4, but the old route re-printed both through Microsoft
   Print to PDF onto the Windows default paper, so the files people are used to

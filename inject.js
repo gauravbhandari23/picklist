@@ -150,32 +150,94 @@
   };
 
   // Nothing in the browser prints these documents — no beforeprint, no
-  // window.print, no iframe. The page talks to QZ Tray, a native printing app,
-  // over a WebSocket on localhost, and QZ Tray prints through Windows. That is
-  // what raises the dialog. Log that traffic to confirm it and learn the
-  // protocol; nothing is blocked here yet, because dropping a request QZ's
-  // client is awaiting could hang the pack flow.
+  // window.print, no iframe. The page talks to QZ Tray, a native printing
+  // application, over a WebSocket on localhost, and QZ Tray prints through
+  // Windows. That is what raises the two Save dialogs.
+  //
+  // When autosave is on the documents are already saved, so that print is pure
+  // duplication. Rather than drop the print job mid-conversation — QZ's client
+  // awaits a reply per request and would hang — the connection is refused, so
+  // QZ Tray simply looks absent. That is a path the page handles well: with QZ
+  // Tray quit, packing completes normally and only these dialogs disappear.
+  const QZ_RE = /localhost|127\.0\.0\.1|\.qz\.io/i;
+
+  // Mimics "nothing listening on that port": connecting, then error, then close.
+  function refusedSocket(url) {
+    const listeners = Object.create(null);
+    const fire = (type, event) => {
+      try {
+        socket['on' + type]?.call(socket, event);
+      } catch {
+        /* the page's handler threw; not our problem */
+      }
+      for (const fn of listeners[type] ?? []) {
+        try {
+          fn.call(socket, event);
+        } catch {
+          /* same */
+        }
+      }
+    };
+    const socket = {
+      url: String(url),
+      readyState: 0,
+      bufferedAmount: 0,
+      extensions: '',
+      protocol: '',
+      binaryType: 'blob',
+      onopen: null,
+      onerror: null,
+      onclose: null,
+      onmessage: null,
+      send() {},
+      close() {
+        socket.readyState = 3;
+      },
+      addEventListener(type, fn) {
+        (listeners[type] ??= []).push(fn);
+      },
+      removeEventListener(type, fn) {
+        listeners[type] = (listeners[type] ?? []).filter((f) => f !== fn);
+      },
+      dispatchEvent() {
+        return true;
+      },
+    };
+    setTimeout(() => {
+      socket.readyState = 3;
+      fire('error', new Event('error'));
+      fire('close', typeof CloseEvent === 'function'
+        ? new CloseEvent('close', { code: 1006, wasClean: false })
+        : new Event('close'));
+    }, 5);
+    return socket;
+  }
+
   try {
     const OriginalWebSocket = window.WebSocket;
     const PrintServiceSocket = function (url, ...rest) {
-      const socket = new OriginalWebSocket(url, ...rest);
-      if (/localhost|127\.0\.0\.1|qz/i.test(String(url))) {
-        // QZ Tray probes ~10 ports in turn, so report the hunt once rather
-        // than once per port.
+      if (QZ_RE.test(String(url))) {
+        const fresh = Date.now() - lastCaptureAt < PRINT_GRACE_MS;
+        if (autosaveOn) {
+          if (!window.__myntraPrintServiceBlocked) {
+            window.__myntraPrintServiceBlocked = true;
+            log('*** refusing the local print service (QZ Tray) — autosave has the documents');
+          }
+          return refusedSocket(url);
+        }
         if (!window.__myntraPrintServiceSeen) {
           window.__myntraPrintServiceSeen = true;
-          log('*** the page is looking for a local print service (QZ Tray), first try:', String(url));
+          log('*** page is contacting a local print service (QZ Tray). autosave off, leaving it alone. captured recently =', fresh);
         }
+      }
+      const socket = new OriginalWebSocket(url, ...rest);
+      if (QZ_RE.test(String(url))) {
         const originalSend = socket.send.bind(socket);
         socket.send = function (data) {
           const body = typeof data === 'string' ? data : `(${typeof data})`;
-          log('*** print service <- ', body.slice(0, 300));
+          log('*** print service <- ', body.slice(0, 200));
           return originalSend(data);
         };
-        socket.addEventListener('message', (event) => {
-          const body = typeof event.data === 'string' ? event.data : `(${typeof event.data})`;
-          log('*** print service -> ', body.slice(0, 200));
-        });
       }
       return socket;
     };

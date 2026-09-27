@@ -110,13 +110,20 @@ by hand. Off is the default.
 
 ### Why the dialogs stop
 
-Myntra prints the two documents after packing, and those prints are what raise
-the Save dialogs. Once autosave has the documents, printing them again is pure
-duplication, so the print is skipped.
+Nothing in the browser prints these documents. The pack page talks to
+**QZ Tray**, a printing application running on the PC, and QZ Tray prints
+through Windows — to Microsoft Print to PDF, which is what raises the dialogs.
 
-It is skipped **only** when a document was actually captured moments before. If
-capture fails for any reason the print goes ahead exactly as it does today, so
-you can still save by hand — nothing is ever lost quietly.
+With autosave on, the documents are already saved, so that print is pure
+duplication. The extension refuses the connection to QZ Tray, so it simply
+looks absent. That is a path the page handles perfectly well: with QZ Tray
+quit, packing completes normally and only the dialogs disappear.
+
+**You do not need to quit QZ Tray.** Leave it running; it is left alone
+whenever autosave is off.
+
+With autosave **off**, QZ Tray is untouched and printing happens exactly as it
+always has.
 
 ### How it works
 
