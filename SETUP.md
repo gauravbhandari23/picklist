@@ -85,11 +85,131 @@ Finished rows turn green and drop to the bottom, so what is left stays on top.
 
 ---
 
-## Saving the label and bill
+## Saving the label and bill automatically (optional)
 
-Unchanged — you still type a name and click Save, twice per order.
+This is **separate from the extension** — it changes nothing in Chrome's
+behaviour on the page, and the extension is not involved. Skip it and everything
+still works; you just keep typing filenames.
 
-One thing that helps with no setup at all — do it entirely on the keyboard:
+**What it does:** scan the cover barcode → the shipping label and the bill both
+save themselves as PDFs into Documents. No dialog, no typing.
+
+**What it does NOT do:** print on paper. You print later, from the folder.
+
+### Before installing anything — check M-Direct
+
+Look in the M-Direct sidebar for a **Print**, **Manifest** or
+**Invoice & Ship Label** section. Many seller portals can download every label
+for a picklist in one go. If M-Direct can, use that instead — nothing to install.
+
+### B1. Install clawPDF
+
+Download from **github.com/clawsoftware/clawPDF** → Releases.
+
+It is the open-source fork of PDFCreator: same auto-save features, no bundled
+extras in the installer.
+
+clawPDF is a printer with no paper. Printing to it produces a PDF file.
+
+### B2. Profile settings
+
+Open clawPDF → **Profile Settings**.
+
+On the **Auto-Save** tab:
+
+| Setting | Value |
+|---|---|
+| **Enable automatic saving** | **ON** ← this is what removes the dialog |
+| **Ensure unique filenames** | **ON** ← this is what stops names repeating |
+| **Target folder** | `C:\Users\<YourName>\Documents\Labels` |
+
+On the **Save** tab:
+
+| Setting | Value |
+|---|---|
+| Open with standard viewer after conversion | **OFF** |
+
+**Ensure unique filenames** appends a number when a name already exists, so you
+do not need a clever filename pattern — a plain name like `label` is enough and
+you will get `label.pdf`, `label_2.pdf`, `label_3.pdf` and so on.
+
+If you want a folder per day, clawPDF supports **tokens** in the folder and
+filename boxes. Use the token list in the UI rather than typing one from memory
+— different versions use different syntax (`<DateTime>` in some, `%date%` in
+others), and the picker always inserts the right one for your build.
+
+### B3. Make clawPDF the Windows default printer
+
+Windows → **Settings → Bluetooth & devices → Printers & scanners**
+
+1. Turn **OFF** "Let Windows manage my default printer"
+   ← easy to miss, and Windows will undo your choice if you leave it on
+2. Click **clawPDF** → **Set as default**
+
+### B4. Add the flag to your Chrome shortcut
+
+Right-click your Chrome shortcut → **Properties** → **Target**, add
+`--kiosk-printing` to the end:
+
+```
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing
+```
+
+This is the only way. Chrome's silent printing always goes to the **system
+default printer** — it cannot be pointed at Chrome's own "Save as PDF". That is
+why a virtual PDF printer is needed rather than a Chrome setting alone.
+
+**The trade-off:** every tab in Chrome now prints silently. Ctrl+P on any site
+saves a PDF to the Labels folder instead of showing a preview.
+
+### B5. Make sure the flag actually applies
+
+A Chrome flag only takes effect when Chrome **starts fresh**. If Chrome is
+already running, the shortcut opens another window in the existing process and
+the flag is ignored.
+
+1. Chrome → **Settings → System** → turn **OFF**
+   "Continue running background apps when Chrome is closed"
+2. **Close every Chrome window**
+3. Open Chrome from that shortcut
+
+Then check: type `chrome://version` in the address bar and read the
+**Command Line** row.
+
+- `--kiosk-printing` is in it → active
+- not there → Chrome was already running. Close everything and relaunch.
+
+That is a definite answer. Check it before blaming anything else.
+
+### B6. Test — one order only
+
+1. Pack one item and scan the cover barcode
+2. **Nothing should pop up**
+3. Open `Documents\Labels` — two PDFs should be there
+4. Open both and check the shipping label is the right size
+
+Do not run a whole picklist until this passes.
+
+### Printing them later
+
+Open the folder → **Ctrl+A** → right-click → **Print**. The whole lot goes to
+the printer in one job.
+
+### Things to know
+
+- **clawPDF becomes your default printer.** Printing from Word or Excel without
+  looking will make a PDF instead of paper. The dialog still appears in normal
+  programs so you can pick a different printer — you just have to notice.
+- **Downloads are unaffected.** Only printing changes.
+  `Save Print Output As` is a print; `Save As` is a download.
+- **There is no confirmation any more.** Glance at the folder every 10 orders
+  and check the file count matches what you packed.
+- **The order ID cannot be in the filename.** A Windows setting cannot read it
+  off a web page.
+
+### If you keep saving by hand instead
+
+Do it entirely on the keyboard:
 
 ```
 Alt + N      cursor jumps to the File name box
@@ -97,17 +217,9 @@ Alt + N      cursor jumps to the File name box
 Enter        saved
 ```
 
-**Alt + N** is the shortcut for the File name box in any Windows Save dialog. Use
-it rather than relying on the cursor already being there — sometimes focus lands
-on the file list instead, and then whatever you type goes nowhere.
-
-If Enter ever does not trigger Save, **Alt + S** is the Save button.
-
-For the name, the last 4 digits of the **Seller Packet ID** shown on the pack
-page work well — short, unique, and still meaningful later.
-
-If you ever want those two dialogs gone entirely, it can be done, but it needs
-software installed on the PC. Ask and I will write it up again.
+**Alt + N** works wherever focus landed. **Alt + S** is Save if Enter does not
+trigger it. The last 4 digits of the **Seller Packet ID** make a short, unique,
+still-meaningful name.
 
 ---
 

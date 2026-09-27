@@ -402,10 +402,17 @@ error on their own.
 - **Naming saved PDFs by order ID.** Possible only from inside the extension,
   and `chrome.downloads` can write only to the Downloads folder — never to
   Documents. Rejected as worse than the alternative.
-- **Removing the two Save dialogs.** A printing problem, not a browser one. It
-  is solvable with `--kiosk-printing` plus an auto-saving PDF printer, but that
-  means installing software; currently left manual. `Alt+N` → type → `Enter`
-  is the no-install keyboard shortcut for that dialog.
+- **Removing the two Save dialogs — in code.** This is a printing problem, not
+  a browser one, and the extension plays no part in it. It is solved entirely
+  with settings: clawPDF as the default printer with auto-save on, plus
+  `--kiosk-printing` on the Chrome shortcut. See [SETUP.md](SETUP.md).
+
+  Worth recording why no code could do it better: Chrome's silent printing
+  always targets the **system default printer** and cannot be pointed at
+  Chrome's own "Save as PDF", so a virtual PDF printer is unavoidable. And an
+  extension could not improve the filenames either — `chrome.downloads` may
+  only write inside the Downloads folder, never Documents. clawPDF's
+  "Ensure unique filenames" already guarantees no collisions.
 - **Packing history / CSV export.** Sounds useful, would never be opened.
 
 ---
