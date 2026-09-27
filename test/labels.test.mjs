@@ -94,3 +94,36 @@ const fromBase64 = (s) => new Uint8Array(Buffer.from(s, 'base64'));
   assert.deepEqual(idsFromLabelUrl(''), { orderId: null, sellerId: null });
   console.log('PASS  order id read from the URL, so naming never depends on request order');
 }
+
+/* 8. The diagnostic description, which one test packet has to be enough for */
+{
+  const { describePayload } = await import('../labels.js');
+
+  const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37]);
+  const rawSummary = describePayload({ bytes: pdf, contentType: 'application/pdf', fromBase64 });
+  assert.equal(rawSummary.verdict, 'raw PDF');
+  assert.equal(rawSummary.ascii, '%PDF-1.7');
+  assert.equal(rawSummary.head, '25 50 44 46 2d 31 2e 37');
+
+  // JSON carrying a base64 PDF: the field must be named so it can be handled.
+  const embedded = toBase64(new Uint8Array([0x25, 0x50, 0x44, 0x46, ...new Array(200).fill(65)]));
+  const json = JSON.stringify({ status: { statusCode: 1 }, data: { fileBytes: embedded } });
+  const jsonSummary = describePayload({
+    bytes: new Uint8Array(Buffer.from(json)), text: json, contentType: 'application/json', fromBase64,
+  });
+  assert.equal(jsonSummary.verdict, 'JSON');
+  assert.deepEqual(jsonSummary.topLevelKeys, ['status', 'data']);
+  const hit = jsonSummary.longStrings.find((f) => f.decodesToPdf);
+  assert.ok(hit, 'the base64 PDF field should be identified');
+  assert.equal(hit.field, 'data.fileBytes', 'and named, so it can be found next time');
+
+  // HTML must be reported with a preview, not silently called unknown.
+  const html = '<!doctype html><html><body>label</body></html>';
+  const htmlSummary = describePayload({
+    bytes: new Uint8Array(Buffer.from(html)), text: html, contentType: 'text/html', fromBase64,
+  });
+  assert.equal(htmlSummary.verdict, 'HTML/XML');
+  assert.ok(htmlSummary.preview.includes('<!doctype'));
+
+  console.log('PASS  payload description names the verdict, the field and a preview');
+}

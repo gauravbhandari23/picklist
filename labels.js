@@ -101,3 +101,61 @@ export function planSave({ contentType = '', bytes, text, toBase64, fromBase64 }
   }
   return { ok: false, reason: 'not-a-pdf' };
 }
+
+/**
+ * A full description of what a response actually contains, for diagnosing a
+ * save that did not happen. Deliberately thorough: a real packet is expensive
+ * to spend on a test, so one attempt should reveal everything.
+ */
+export function describePayload({ bytes, text = '', contentType = '', fromBase64 }) {
+  const head = [...bytes.slice(0, 8)].map((b) => b.toString(16).padStart(2, '0')).join(' ');
+  const ascii = String.fromCharCode(...bytes.slice(0, 8)).replace(/[^\x20-\x7e]/g, '.');
+  const out = { contentType: contentType || '(none)', bytes: bytes.length, head, ascii };
+
+  if (looksLikePdf(bytes)) {
+    out.verdict = 'raw PDF';
+    return out;
+  }
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    /* not JSON */
+  }
+
+  if (parsed && typeof parsed === 'object') {
+    out.verdict = 'JSON';
+    out.topLevelKeys = Object.keys(parsed);
+    const fields = [];
+    const walk = (node, path) => {
+      if (typeof node === 'string') {
+        const clean = node.replace(/\s+/g, '');
+        let isPdf = false;
+        try {
+          isPdf = clean.length > 8 && looksLikePdf(fromBase64(clean));
+        } catch {
+          /* not base64 */
+        }
+        fields.push({
+          field: path || '(root)',
+          length: node.length,
+          base64ish: clean.length > 100 && !/[^A-Za-z0-9+/=]/.test(clean),
+          decodesToPdf: isPdf,
+        });
+      } else if (Array.isArray(node)) node.forEach((v, i) => walk(v, `${path}[${i}]`));
+      else if (node && typeof node === 'object') {
+        Object.entries(node).forEach(([k, v]) => walk(v, path ? `${path}.${k}` : k));
+      }
+    };
+    walk(parsed, '');
+    // The long ones are the only plausible carriers of a document.
+    out.longStrings = fields.filter((f) => f.length > 40).sort((a, b) => b.length - a.length).slice(0, 8);
+    if (!out.longStrings.length) out.preview = text.slice(0, 300);
+    return out;
+  }
+
+  out.verdict = /^\s*<(!doctype|html|\?xml)/i.test(text) ? 'HTML/XML' : 'unknown';
+  out.preview = text.slice(0, 300);
+  return out;
+}

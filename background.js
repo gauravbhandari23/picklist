@@ -5,7 +5,7 @@
 // documents from the API, so they can be downloaded directly. There is no
 // print dialog to suppress, and the packet id can go in the filename.
 
-import { classifyLabelUrl, labelFilename, idsFromLabelUrl, planSave } from './labels.js';
+import { classifyLabelUrl, labelFilename, idsFromLabelUrl, planSave, describePayload } from './labels.js';
 
 const PACK_URL = '*://mdirect.myntrainfo.com/PackOrder/*';
 const FILL_TYPES = new Set(['FILL', 'FILL_PICKLIST']);
@@ -92,6 +92,13 @@ function alreadyHandled(url) {
   return false;
 }
 
+// A download can start and then fail — disk full, blocked, cancelled. Without
+// this it would look like a silent success.
+chrome.downloads.onChanged.addListener((delta) => {
+  if (delta.error?.current) tellPage('download', delta.id, 'FAILED:', delta.error.current);
+  else if (delta.state?.current === 'complete') tellPage('download', delta.id, 'complete');
+});
+
 async function saveLabel({ url, packet, body, contentType = '' }) {
   const kind = classifyLabelUrl(url);
   if (!kind) {
@@ -100,8 +107,9 @@ async function saveLabel({ url, packet, body, contentType = '' }) {
   }
 
   const { autosave } = await chrome.storage.local.get('autosave');
+  tellPage(kind, 'seen. autosave =', autosave === true, '| body =', body ? `${body.length} base64 chars` : 'MISSING');
   if (!autosave) {
-    tellPage(kind, '- autosave is OFF, nothing saved');
+    tellPage(kind, '- autosave is OFF, nothing saved. Tick Autosave in the panel.');
     return;
   }
 
@@ -120,8 +128,8 @@ async function saveLabel({ url, packet, body, contentType = '' }) {
     const bytes = base64ToBytes(body);
     // Only worth decoding as text if it might be JSON or HTML.
     const text = bytes.length < 4_000_000 ? new TextDecoder().decode(bytes) : '';
-    tellPage(kind, '- received', bytes.length, 'bytes, content-type:', contentType || '(none)',
-      '- starts with:', JSON.stringify(text.slice(0, 80)));
+    tellPage(kind, 'payload:', describePayload({ bytes, text, contentType, fromBase64: base64ToBytes }));
+    tellPage(kind, 'packet info:', packet ?? '(none captured)', '| url ids:', idsFromLabelUrl(url));
 
     const plan = planSave({
       contentType,
@@ -145,14 +153,16 @@ async function saveLabel({ url, packet, body, contentType = '' }) {
       orderId: packet?.orderId ?? fromUrl.orderId,
     });
 
-    await chrome.downloads.download({
+    tellPage(kind, '- saving as', filename, '(', plan.base64.length, 'base64 chars )');
+
+    const downloadId = await chrome.downloads.download({
       url: `data:application/pdf;base64,${plan.base64}`,
       filename,
       conflictAction: 'uniquify', // Chrome appends (1), (2)… so nothing is lost
       saveAs: false,
     });
 
-    tellPage(kind, '- SAVED as', filename);
+    tellPage(kind, '- SAVED, download id', downloadId, '->', filename);
     tellPanel({ type: 'AUTOSAVE_RESULT', ok: true, kind, filename });
   } catch (err) {
     tellPage(kind, '- FAILED:', err?.message ?? String(err));
