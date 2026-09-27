@@ -85,147 +85,28 @@ Finished rows turn green and drop to the bottom, so what is left stays on top.
 
 ---
 
-## Saving the label and bill automatically (optional)
+## Saving the label and bill
 
-This is **separate from the extension** — it changes nothing in Chrome's
-behaviour on the page, and the extension is not involved. Skip it and everything
-still works; you just keep typing filenames.
+You save these by hand, as before. Do it entirely on the keyboard:
 
-**What it does:** scan the cover barcode → the shipping label and the bill both
-save themselves as PDFs into Documents. No dialog, no typing.
+```
+Alt + N      cursor jumps to the File name box
+<type name>  e.g. 8105
+Enter        saved
+```
 
-**What it does NOT do:** print on paper. You print later, from the folder.
+**Alt + N** works wherever focus landed — sometimes it starts on the file list
+instead of the name box, and then whatever you type goes nowhere. **Alt + S** is
+Save if Enter does not trigger it.
 
-### Before installing anything — check M-Direct
+For the name, the last 4 digits of the **Seller Packet ID** on the pack page
+make a short, unique name that still means something later.
 
-Look in the M-Direct sidebar for a **Print**, **Manifest** or
-**Invoice & Ship Label** section. Many seller portals can download every label
-for a picklist in one go. If M-Direct can, use that instead — nothing to install.
+Automating these two dialogs was tried and abandoned — see
+[DOCUMENTATION.md](DOCUMENTATION.md) for what was found, so it does not get
+repeated from scratch.
 
-### B1. Install PDFCreator
-
-Download from **pdfforge.org** → PDFCreator (the free version).
-
-⚠️ **During install, decline the bundled extras.** The installer offers toolbars
-and other software on a couple of screens — untick them. Annoying, not
-dangerous.
-
-It is the one with auto-save confirmed for silent print-to-PDF, and it is still
-maintained. (clawPDF is a fork of it made to strip the adware — good code, but
-no release since May 2023, and a virtual printer installs a system-level driver.
-PDF24 is maintained and clean, but its auto-save may live in its Assistant
-window rather than at the printer level, which would not be silent.)
-
-PDFCreator is a printer with no paper. Printing to it produces a PDF file.
-
-### B2. Turn on automatic saving
-
-It is **not a checkbox**, and the words "auto save" do not appear on it — it is a
-switch with two modes. That is why it is hard to find.
-
-1. Open PDFCreator → click **Profiles**
-2. On the left-hand side, open the **Save** tab
-3. Set the **switch** to **Automatic** ← this is the setting
-4. In the **Filename** field, include a `<DateTime>` token so names never repeat
-5. In **target folder** just below it, set
-   `C:\Users\<YourName>\Documents\Labels` (or use the **…** button)
-6. Go to the **Printer** tab. Find your printer in the list, and in the
-   **Profile** column pick your autosave profile from the dropdown.
-7. Click **Save**
-
-⚠️ **Step 6 is the one everyone misses.** A profile that is not attached to a
-printer is ignored completely — printing carries on prompting and nothing looks
-wrong in the settings. If steps 1–5 seem right but the dialog still appears,
-this is why.
-
-Also worth setting while you are in the profile: turn **off** opening the
-document after saving, under the same Save section.
-
-### B2b. Set up the packing Chrome
-
-The packing Chrome is a **separate Chrome instance**. Both can be open at once,
-and neither affects the other:
-
-| | Packing Chrome | Normal Chrome |
-|---|---|---|
-| Opened by | `start-packing-chrome.bat` | as always |
-| Print preview | skipped | appears |
-| Prints to | **PDFCreator**, saved as PDF | **whatever printer you pick** |
-| Bookmarks, logins | just Myntra | untouched |
-
-Nothing is switched back and forth. No closing Chrome, no black window to keep
-open, no registry change.
-
-#### Why `--user-data-dir` and not `--profile-directory`
-
-This is the detail the whole thing rests on.
-
-A Chrome flag is only read when Chrome starts a **new browser process**.
-Chrome runs **one browser process per user-data-dir** — profiles inside one
-user-data-dir share that process. So `--profile-directory` would join the Chrome
-already running and `--kiosk-printing` would be silently ignored, which is
-exactly the failure that is hard to diagnose.
-
-`--user-data-dir` starts a genuinely separate instance, so the flag always
-applies. It also gives that instance its own remembered printer, which is what
-lets the two Chromes print to different places.
-
-#### Run once: `windows\setup-packing-chrome.bat`
-
-It opens the packing Chrome **without** silent printing, so you still get a
-print preview. In the window that opens:
-
-1. **Log in to Myntra**
-2. **Install the extension** — `chrome://extensions` → Developer mode →
-   Load unpacked → the `myntra-picklist-panel` folder
-3. **Teach it the printer** — open any page, **Ctrl+P**, set Destination to
-   **PDFCreator**, click **Print**
-
-Step 3 is what makes labels go to PDF afterwards. The packing Chrome remembers
-its own printer, separately from your normal Chrome.
-
-The profile lives in `%LOCALAPPDATA%\ChromePacking`.
-
-#### Every day: `windows\start-packing-chrome.bat`
-
-It refuses to run until the setup above has been done, because it turns off the
-print preview — started with no Myntra login, no extension and no printer set,
-there would be no way to fix any of that from inside it.
-
-Double-click it. Right-click → **Pin to taskbar** to keep it handy.
-
-That is the whole routine. Labels save silently; everything else on the PC
-prints normally.
-
-### B2a. Prove it works before doing the rest
-
-Ten minutes, and it settles the question with no guessing:
-
-1. Install PDFCreator, auto-save on, folder set (B1, B2)
-2. Make it the Windows default printer (B3)
-3. Close every Chrome window, relaunch with `--kiosk-printing` (B4, B5)
-4. Open **any** web page and press **Ctrl+P**
-
-Did a PDF land in the folder with no dialog?
-
-- **yes** — it works, carry on
-- **no** — stop, and report what appeared instead
-
-### B6. Test — one order only
-
-1. Pack one item and scan the cover barcode
-2. **Nothing should pop up**
-3. Open `Documents\Labels` — two PDFs should be there
-4. Open both and check the shipping label is the right size
-
-Do not run a whole picklist until this passes.
-
-### Printing them later
-
-Open the folder → **Ctrl+A** → right-click → **Print**. The whole lot goes to
-the printer in one job.
-
-### Things to know
+## Things to know
 
 - **PDFCreator becomes your default printer.** Printing from Word or Excel
   without looking will make a PDF instead of paper. The dialog still appears in
