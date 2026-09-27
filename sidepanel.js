@@ -12,7 +12,7 @@ const els = {
 };
 
 const EMPTY = {
-  fileName: null, loadedAt: null,
+  fileName: null,
   picklistId: null,      // decoded from the barcode in the PDF
   pagePicklistId: null,  // whatever the pack page currently has open
   fillMode: 'myntra', rows: [], warnings: [],
@@ -319,7 +319,7 @@ async function loadFile(file) {
     const all = [...warnings];
     if (!picklistId) all.push('Could not read the Picklist ID barcode — scan or type it yourself.');
 
-    state = { ...state, fileName: file.name, loadedAt: Date.now(), picklistId, rows, warnings: all };
+    state = { ...state, fileName: file.name, picklistId, rows, warnings: all };
     lastScrolled = null;
     save();
     render();

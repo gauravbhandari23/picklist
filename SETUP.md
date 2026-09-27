@@ -110,17 +110,11 @@ Download from **pdfforge.org** → PDFCreator (the free version).
 and other software on a couple of screens — untick them. Annoying, not
 dangerous.
 
-Why this one:
-
-| | PDFCreator | PDF24 | clawPDF |
-|---|---|---|---|
-| Auto-save confirmed for silent print-to-PDF | **yes** | unclear — may still open its Assistant window | yes |
-| Actively maintained | **yes** | yes | no, last release May 2023 |
-| Installer offers extras | yes, decline them | no | no |
-
-clawPDF exists *because* it is a fork of PDFCreator made to strip the adware —
-which is the clearest evidence that PDFCreator's auto-save is the part that
-works. It is also still maintained, which clawPDF is not.
+It is the one with auto-save confirmed for silent print-to-PDF, and it is still
+maintained. (clawPDF is a fork of it made to strip the adware — good code, but
+no release since May 2023, and a virtual printer installs a system-level driver.
+PDF24 is maintained and clean, but its auto-save may live in its Assistant
+window rather than at the printer level, which would not be silent.)
 
 PDFCreator is a printer with no paper. Printing to it produces a PDF file.
 

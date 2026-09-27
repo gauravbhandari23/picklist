@@ -407,12 +407,8 @@ error on their own.
   with settings: PDFCreator as the default printer with auto-save on, plus
   `--kiosk-printing` on the Chrome shortcut. See [SETUP.md](SETUP.md).
 
-  PDFCreator over the alternatives: it is the one with auto-save confirmed for
-  exactly this job, and it is still maintained. clawPDF is a fork of it made to
-  strip the adware — good auditable code, but no release since May 2023, and a
-  virtual printer installs a system-level driver and service. PDF24 is
-  maintained and clean, but its auto-save may live in its Assistant window
-  rather than at the printer level, which would not be silent.
+  PDFCreator because it is the one with auto-save confirmed for this job and is
+  still maintained; the alternatives are weighed in [SETUP.md](SETUP.md).
 
   Worth recording why no code could do it better: Chrome's silent printing
   always targets the **system default printer** and cannot be pointed at

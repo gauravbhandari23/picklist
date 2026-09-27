@@ -104,7 +104,7 @@ function rowBands(anchors, headerFloor, totalCeil) {
     const bottoms = [a.y - reach, totalCeil + EDGE_MARGIN];
     if (above) tops.push((above.y + a.y) / 2);
     if (below) bottoms.push((a.y + below.y) / 2);
-    return { anchor: a, top: Math.min(...tops), bottom: Math.max(...bottoms) };
+    return { top: Math.min(...tops), bottom: Math.max(...bottoms) };
   });
 }
 
