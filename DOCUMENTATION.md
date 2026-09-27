@@ -402,38 +402,57 @@ error on their own.
 - **Naming saved PDFs by order ID.** Possible only from inside the extension,
   and `chrome.downloads` can write only to the Downloads folder — never to
   Documents. Rejected as worse than the alternative.
-- **Removing the two Save dialogs.** Tried at length, abandoned. Recorded here
-  so it is not started again from nothing:
-
-  The dialog is a **print**, not a download — its title is "Save Print Output
-  As". Myntra calls print, and Chrome's destination for that print is its own
-  built-in **Save as PDF**, which cannot save without being given a filename.
-
-  The intended fix was `--kiosk-printing` plus an auto-saving PDF printer
-  (PDFCreator) as the destination. Three things were learned:
-
-  1. A Chrome flag is only read when Chrome starts a **new browser process**.
-     Chrome runs one browser process per user-data-dir, and profiles inside one
-     share it — so `--profile-directory` joins the running Chrome and the flag
-     is silently dropped. `--user-data-dir` starts a real separate instance.
-     `chrome://version`'s **Command Line** row is the only reliable check.
-  2. Chrome prints to the **last printer it used**, per instance, not the
-     Windows default. Setting PDFCreator as the Windows default does nothing on
-     its own.
-  3. **This is where it stalled.** A destination set via Ctrl+P on an ordinary
-     page did not carry over to Myntra's label print, which kept its own
-     "Save as PDF" destination. With `--kiosk-printing` active and that
-     destination, the job is **silently discarded** — no dialog, no file, and
-     Myntra still reports "packed successfully".
-
-  Getting further would mean forcing the destination with Chrome's
-  `DefaultPrinterSelection` policy, which is machine-wide and would change
-  ordinary printing too. Judged not worth it against saving by hand with
-  `Alt+N` → type → `Enter`.
-
 - **Packing history / CSV export.** Sounds useful, would never be opened.
 
 ---
+
+## 10a. Autosaving the label and invoice
+
+The two Save dialogs were first attacked as a printing problem —
+`--kiosk-printing` plus an auto-saving PDF printer. That failed, and the reasons
+are worth keeping:
+
+- The dialog is a **print**, not a download ("Save Print Output As").
+- A Chrome flag is only read when a **new browser process** starts. Chrome runs
+  one browser process per user-data-dir and profiles share it, so
+  `--profile-directory` joins the running Chrome and the flag is silently
+  dropped; `--user-data-dir` does not. `chrome://version`'s **Command Line** row
+  is the only reliable check.
+- Chrome prints to the **last printer that instance used**, not the Windows
+  default.
+- A destination set via Ctrl+P did **not** carry over to Myntra's own label
+  print, which kept Chrome's built-in "Save as PDF" — and with
+  `--kiosk-printing` active, that combination **discards the job silently**. No
+  dialog, no file, and Myntra still reports "packed successfully".
+
+The network log then showed the real answer. After a packet is packed, the page
+fetches both documents from the API:
+
+```
+GET .../api/mdirect/orders/getShippingLabelForSellerPacketV2/<store>?...&sellerOrderId=<id>
+GET .../api/mdirect/orders/getPacketInvoice/<store>?...&sellerOrderId=<id>
+```
+
+So there is no need to print at all. `inject.js` runs in the page's world —
+the only place the page's own `fetch`/`XHR` can be seen — and reports those two
+URLs. `background.js` fetches the same documents with the session cookies and
+saves them with `chrome.downloads`.
+
+This is better than the printing route in every way that matters: no dialog to
+suppress, no software to install, no machine-wide printer change, and the packet
+id is known so the files can be named `1974014045-label.pdf` instead of a
+counter.
+
+Constraints worth remembering:
+
+- `chrome.downloads` can only write **inside the download folder**. Absolute
+  paths and `..` are rejected, so `Documents` is reachable only by changing
+  Chrome's own download location.
+- The response is **verified to be a PDF** before saving — by magic bytes, or by
+  finding a base64 PDF inside a JSON wrapper. Anything else is refused with a
+  reason rather than saved under a `.pdf` name.
+- It is **off by default** and gated by the Autosave tick-box. Off means the
+  page behaves exactly as it always did.
 
 ## 11. Ideas not yet built
 

@@ -1,8 +1,15 @@
-// Opens the side panel and relays panel -> pack-page messages.
-// Deliberately does nothing else: no cookies, no network, no page scraping.
+// Opens the side panel, relays panel -> pack-page messages, and — when
+// autosave is on — saves the shipping label and invoice itself.
+//
+// Saving beats printing here: after a packet is packed the page fetches both
+// documents from the API, so they can be downloaded directly. There is no
+// print dialog to suppress, and the packet id can go in the filename.
+
+import { classifyLabelUrl, labelFilename, idsFromLabelUrl, planSave } from './labels.js';
 
 const PACK_URL = '*://mdirect.myntrainfo.com/PackOrder/*';
 const FILL_TYPES = new Set(['FILL', 'FILL_PICKLIST']);
+const DEDUPE_MS = 60_000;
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -10,9 +17,15 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (!FILL_TYPES.has(msg?.type)) return false;
-  relayToPackTab(msg).then(sendResponse);
-  return true; // keep the channel open for the async reply
+  if (FILL_TYPES.has(msg?.type)) {
+    relayToPackTab(msg).then(sendResponse);
+    return true; // keep the channel open for the async reply
+  }
+  if (msg?.type === 'LABEL_URL') {
+    saveLabel(msg).catch(() => {});
+    return false;
+  }
+  return false;
 });
 
 // The pack page is usually in a different tab from the one in front of you, and
@@ -37,5 +50,85 @@ async function relayToPackTab(msg) {
     return await chrome.tabs.sendMessage(tab.id, msg);
   } catch {
     return { ok: false, reason: 'no-content-script' };
+  }
+}
+
+/* ---------- autosaving the label and invoice ---------- */
+
+const bytesToBase64 = (bytes) => {
+  let binary = '';
+  const CHUNK = 0x8000; // String.fromCharCode cannot take a whole PDF at once
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+};
+const base64ToBytes = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+// Tell the panel how it went. The panel may be closed; that is fine.
+const tellPanel = (detail) => chrome.runtime.sendMessage(detail).catch(() => {});
+
+const handled = new Map();
+function alreadyHandled(url) {
+  const now = Date.now();
+  for (const [seen, at] of handled) if (now - at > DEDUPE_MS) handled.delete(seen);
+  if (handled.has(url)) return true;
+  handled.set(url, now);
+  return false;
+}
+
+async function saveLabel({ url, packet }) {
+  const kind = classifyLabelUrl(url);
+  if (!kind) return;
+
+  const { autosave } = await chrome.storage.local.get('autosave');
+  if (!autosave) return; // off means off — the page prints as it always did
+
+  if (alreadyHandled(url)) return;
+
+  try {
+    // Same request the page just made, with the same session cookies.
+    const res = await fetch(url, { credentials: 'include' });
+    if (!res.ok) {
+      tellPanel({ type: 'AUTOSAVE_RESULT', ok: false, kind, reason: `http-${res.status}` });
+      return;
+    }
+
+    const contentType = res.headers.get('content-type') ?? '';
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    // Only worth decoding as text if it might be JSON or HTML.
+    const text = bytes.length < 4_000_000 ? new TextDecoder().decode(bytes) : '';
+
+    const plan = planSave({
+      contentType,
+      bytes,
+      text,
+      toBase64: bytesToBase64,
+      fromBase64: base64ToBytes,
+    });
+
+    if (!plan.ok) {
+      // Never save something that is not a PDF under a .pdf name.
+      tellPanel({ type: 'AUTOSAVE_RESULT', ok: false, kind, reason: plan.reason, contentType });
+      return;
+    }
+
+    const fromUrl = idsFromLabelUrl(url);
+    const filename = labelFilename({
+      kind,
+      packetId: packet?.packetId,
+      orderId: packet?.orderId ?? fromUrl.orderId,
+    });
+
+    await chrome.downloads.download({
+      url: `data:application/pdf;base64,${plan.base64}`,
+      filename,
+      conflictAction: 'uniquify', // Chrome appends (1), (2)… so nothing is lost
+      saveAs: false,
+    });
+
+    tellPanel({ type: 'AUTOSAVE_RESULT', ok: true, kind, filename });
+  } catch (err) {
+    tellPanel({ type: 'AUTOSAVE_RESULT', ok: false, kind, reason: err?.message ?? 'failed' });
   }
 }

@@ -1,0 +1,96 @@
+// Recognising the label/invoice endpoints, naming the files, and deciding what
+// a response actually contains.
+//   node test/labels.test.mjs
+import assert from 'node:assert/strict';
+import { classifyLabelUrl, labelFilename, looksLikePdf, planSave, DOWNLOAD_FOLDER } from '../labels.js';
+
+const toBase64 = (bytes) => Buffer.from(bytes).toString('base64');
+const fromBase64 = (s) => new Uint8Array(Buffer.from(s, 'base64'));
+
+/* 1. The real URLs seen on a live pack */
+{
+  const label = 'https://partnersapi.myntrainfo.com/api/mdirect/orders/getShippingLabelForSellerPacketV2/2297?sellerId=85764&campaignEnriched=false&sellerOrderId=100360454813';
+  const invoice = 'https://partnersapi.myntrainfo.com/api/mdirect/orders/getPacketInvoice/2297?sellerId=85764&campaignEnriched=false&sellerOrderId=100360454813';
+  assert.equal(classifyLabelUrl(label), 'label');
+  assert.equal(classifyLabelUrl(invoice), 'invoice');
+  // A later V3 must still be recognised — the version is not matched on.
+  assert.equal(classifyLabelUrl(label.replace('V2', 'V3')), 'label');
+  console.log('PASS  both live endpoints recognised, version-independent');
+}
+
+/* 2. Everything else must be ignored */
+{
+  for (const url of [
+    'https://partnersapi.myntrainfo.com/api/mdirect/packets/items/qcpass',
+    'https://partnersapi.myntrainfo.com/api/mdirect/packets/1974014045/ready-to-ship',
+    'https://mdirect.myntrainfo.com/PackOrder/Operations',
+    'https://example.com/getPacketInvoice/2297',   // right path, wrong site
+    '', null, undefined, 42,
+  ]) {
+    assert.equal(classifyLabelUrl(url), null, `should ignore: ${url}`);
+  }
+  console.log('PASS  qcpass, ready-to-ship, the page itself and other sites ignored');
+}
+
+/* 3. Filenames carry the packet id and cannot escape the download folder */
+{
+  const at = new Date(2026, 8, 27);
+  assert.equal(labelFilename({ kind: 'label', packetId: 1974014045, at }),
+    `${DOWNLOAD_FOLDER}/2026-09-27/1974014045-label.pdf`);
+  assert.equal(labelFilename({ kind: 'invoice', packetId: 1974014045, at }),
+    `${DOWNLOAD_FOLDER}/2026-09-27/1974014045-invoice.pdf`);
+  // Falls back to the order id, then to a placeholder.
+  assert.match(labelFilename({ kind: 'label', orderId: 100360454813, at }), /100360454813-label\.pdf$/);
+  assert.match(labelFilename({ kind: 'label', at }), /unknown-label\.pdf$/);
+  // Chrome rejects a filename containing ../ — it must be impossible to build one.
+  const nasty = labelFilename({ kind: 'label', packetId: '../../../etc/passwd', at });
+  assert.ok(!nasty.includes('..'), `path traversal leaked: ${nasty}`);
+  assert.ok(nasty.startsWith(`${DOWNLOAD_FOLDER}/`));
+  console.log('PASS  filenames carry the packet id, and cannot escape the folder');
+}
+
+/* 4. A raw PDF response */
+{
+  const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37, 10, 11, 12]);
+  assert.ok(looksLikePdf(pdf));
+  const plan = planSave({ contentType: 'application/pdf', bytes: pdf, toBase64, fromBase64 });
+  assert.equal(plan.ok, true);
+  assert.equal(plan.base64, toBase64(pdf));
+  console.log('PASS  a raw PDF response is saved as-is');
+}
+
+/* 5. A PDF wrapped as base64 inside JSON, whatever the field is called */
+{
+  const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, ...new Array(300).fill(65)]);
+  const b64 = toBase64(pdf);
+  for (const field of ['data', 'pdfContent', 'whateverTheyCallIt']) {
+    const text = JSON.stringify({ status: { statusType: 'SUCCESS' }, [field]: b64 });
+    const plan = planSave({ contentType: 'application/json', text, toBase64, fromBase64 });
+    assert.equal(plan.ok, true, `field "${field}" not found`);
+    assert.equal(plan.base64, b64);
+  }
+  console.log('PASS  base64 PDF found inside JSON regardless of the field name');
+}
+
+/* 6. Anything that is not a PDF must fail loudly, never save junk as .pdf */
+{
+  assert.deepEqual(
+    planSave({ contentType: 'text/html', text: '<!doctype html><html>...', toBase64, fromBase64 }),
+    { ok: false, reason: 'html' });
+  assert.deepEqual(
+    planSave({ contentType: 'application/json', text: '{"status":{"statusMessage":"no"}}', toBase64, fromBase64 }),
+    { ok: false, reason: 'json-without-pdf' });
+  assert.equal(planSave({ contentType: 'text/plain', text: 'nope', toBase64, fromBase64 }).ok, false);
+  console.log('PASS  HTML, empty JSON and plain text are refused, not saved as .pdf');
+}
+
+/* 7. The order id can always be read off the URL itself */
+{
+  const { idsFromLabelUrl } = await import('../labels.js');
+  const url = 'https://partnersapi.myntrainfo.com/api/mdirect/orders/getShippingLabelForSellerPacketV2/2297?sellerId=85764&campaignEnriched=false&sellerOrderId=100360454813';
+  assert.deepEqual(idsFromLabelUrl(url), { orderId: '100360454813', sellerId: '85764' });
+  // Never throws, whatever it is handed.
+  assert.deepEqual(idsFromLabelUrl('not a url'), { orderId: null, sellerId: null });
+  assert.deepEqual(idsFromLabelUrl(''), { orderId: null, sellerId: null });
+  console.log('PASS  order id read from the URL, so naming never depends on request order');
+}

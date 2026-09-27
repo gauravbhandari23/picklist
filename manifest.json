@@ -7,10 +7,12 @@
     "sidePanel",
     "storage",
     "tabs",
-    "scripting"
+    "scripting",
+    "downloads"
   ],
   "host_permissions": [
-    "*://mdirect.myntrainfo.com/*"
+    "*://mdirect.myntrainfo.com/*",
+    "*://partnersapi.myntrainfo.com/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -36,6 +38,16 @@
         "content.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://mdirect.myntrainfo.com/PackOrder/*"
+      ],
+      "js": [
+        "inject.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
     }
   ]
 }

@@ -7,7 +7,8 @@ pdfjs.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('lib/pdf.worker.min.
 const $ = (id) => document.getElementById(id);
 const els = {
   subtitle: $('subtitle'), picklistId: $('picklistId'), doneCount: $('doneCount'), totalCount: $('totalCount'),
-  close: $('close'), pick: $('pick'), reset: $('reset'), clear: $('clear'), fillMode: $('fillMode'),
+  close: $('close'), pick: $('pick'), reset: $('reset'), clear: $('clear'),
+  fillMode: $('fillMode'), autosave: $('autosave'),
   status: $('status'), warnings: $('warnings'), drop: $('drop'), rows: $('rows'), file: $('file'),
 };
 
@@ -367,6 +368,18 @@ els.fillMode.addEventListener('change', () => {
   save();
 });
 
+// Kept as its own storage key, not part of the picklist: the service worker
+// reads it directly, and it must survive Clear.
+els.autosave.addEventListener('change', () => {
+  const on = els.autosave.checked;
+  chrome.storage.local.set({ autosave: on });
+  status(
+    on
+      ? 'Autosave on — the label and bill will save themselves after each pack.'
+      : 'Autosave off — save them by hand as before.',
+  );
+});
+
 for (const type of ['dragenter', 'dragover']) {
   document.addEventListener(type, (e) => {
     e.preventDefault();
@@ -380,14 +393,28 @@ document.addEventListener('drop', (e) => {
   requestLoad(e.dataTransfer?.files?.[0]);
 });
 
+const AUTOSAVE_PROBLEMS = {
+  html: 'Myntra returned a web page, not a PDF — save that one by hand.',
+  'json-without-pdf': 'Myntra returned data, not a PDF — save that one by hand.',
+  'not-a-pdf': 'That download was not a PDF — save it by hand.',
+};
+
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg?.type !== 'PAGE_PICKLIST_ID') return;
-  state.pagePicklistId = msg.value;
-  save();
-  render();
+  if (msg?.type === 'PAGE_PICKLIST_ID') {
+    state.pagePicklistId = msg.value;
+    save();
+    render();
+    return;
+  }
+  if (msg?.type === 'AUTOSAVE_RESULT') {
+    const what = msg.kind === 'invoice' ? 'Bill' : 'Shipping label';
+    if (msg.ok) status(`${what} saved: ${msg.filename.split('/').pop()}`);
+    else status(`${what} not saved. ${AUTOSAVE_PROBLEMS[msg.reason] ?? msg.reason}`, true);
+  }
 });
 
-const stored = await chrome.storage.local.get('picklist');
+const stored = await chrome.storage.local.get(['picklist', 'autosave']);
+els.autosave.checked = stored.autosave === true;
 state = { ...EMPTY, ...(stored.picklist ?? {}) };
 // Older saved state kept a line per SKU with a quantity; split it into units.
 if (state.rows.some((r) => (r.qty ?? 1) > 1 || r.units === undefined)) state.rows = expandUnits(state.rows);

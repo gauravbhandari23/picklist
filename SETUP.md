@@ -85,26 +85,56 @@ Finished rows turn green and drop to the bottom, so what is left stays on top.
 
 ---
 
-## Saving the label and bill
+## Saving the label and bill — Autosave
 
-You save these by hand, as before. Do it entirely on the keyboard:
+There is an **Autosave** tick-box in the panel toolbar.
 
 ```
-Alt + N      cursor jumps to the File name box
-<type name>  e.g. 8105
-Enter        saved
+Load file   Reset   Clear    [x] Autosave    Fill [Myntra SKU]
 ```
 
-**Alt + N** works wherever focus landed — sometimes it starts on the file list
-instead of the name box, and then whatever you type goes nowhere. **Alt + S** is
-Save if Enter does not trigger it.
+**Autosave ON** — after you scan the cover barcode, the shipping label and the
+bill save themselves:
 
-For the name, the last 4 digits of the **Seller Packet ID** on the pack page
-make a short, unique name that still means something later.
+```
+Downloads\myntra-labels\2026-09-27\
+   1974014045-label.pdf
+   1974014045-invoice.pdf
+```
 
-Automating these two dialogs was tried and abandoned — see
-[DOCUMENTATION.md](DOCUMENTATION.md) for what was found, so it does not get
-repeated from scratch.
+Named by **packet id**, in a folder per day. No dialogs, no typing. If a name
+ever repeats, Chrome adds `(1)` rather than overwriting.
+
+**Autosave OFF** — nothing changes. Myntra prints as it always did and you save
+by hand. Off is the default.
+
+### How it works
+
+Nothing is printed. After a packet is packed, Myntra's own page fetches the two
+documents from its API. The extension sees those two requests, fetches the same
+documents with your session, and saves them.
+
+That is why it works where the printing approach did not: there is no print
+dialog in the way, and the packet id is known, so the files can be named
+properly.
+
+### Where the files go
+
+Chrome only lets an extension write **inside your download folder** — absolute
+paths and `..` are rejected. So they land in
+`<your downloads>\myntra-labels\<date>\`.
+
+To have them somewhere else, change Chrome's own download location:
+**Settings → Downloads → Location**. The `myntra-labels` folder follows it.
+
+Also make sure **"Ask where to save each file before downloading"** is **off**,
+or Chrome will prompt for every file.
+
+### If a document cannot be saved
+
+The panel says so and never saves a non-PDF under a `.pdf` name — for example
+*"Shipping label not saved. Myntra returned a web page, not a PDF."* Save that
+one by hand; nothing is lost.
 
 ## Things to know
 

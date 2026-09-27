@@ -91,6 +91,15 @@ if (!window.__myntraPicklistPanel) {
     return true; // async reply
   });
 
+  // inject.js runs in the page's own world and reports the label and invoice
+  // URLs it sees. Relay them to the service worker, which does the saving.
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    const msg = event.data;
+    if (msg?.__myntraPicklistPanel !== true || msg.type !== 'LABEL_URL') return;
+    chrome.runtime.sendMessage({ type: 'LABEL_URL', url: msg.url, packet: msg.packet }).catch(() => {});
+  });
+
   // An input's value changes without any DOM mutation, so polling is the honest
   // way to watch it. Once a second costs nothing.
   let lastSeen = null;
