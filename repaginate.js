@@ -33,6 +33,26 @@ export async function repaginate(bytes, size) {
   if (!sheet) return bytes; // 'original' — hand back exactly what Myntra sent
 
   const source = await PDFDocument.load(bytes);
+  // A rotated page, one showing only part of its sheet (CropBox), or one whose
+  // sheet doesn't start at 0,0 would come out turned, shifted or clipped — such
+  // a document is saved exactly as Myntra sent it. (Myntra's label and invoice
+  // have none of these.)
+  const unusual = source.getPages().some((p) => {
+    const m = p.getMediaBox();
+    const c = p.getCropBox();
+    return (
+      p.getRotation().angle % 360 !== 0 ||
+      // pdf-lib embeds a page as the box [0 0 w h], so a sheet whose origin
+      // isn't 0,0 would come out shifted and clipped.
+      Math.abs(m.x) > 0.5 ||
+      Math.abs(m.y) > 0.5 ||
+      Math.abs(m.x - c.x) > 0.5 ||
+      Math.abs(m.y - c.y) > 0.5 ||
+      Math.abs(m.width - c.width) > 0.5 ||
+      Math.abs(m.height - c.height) > 0.5
+    );
+  });
+  if (unusual) return bytes;
   const out = await PDFDocument.create();
   const pages = await out.embedPdf(source, source.getPageIndices());
 

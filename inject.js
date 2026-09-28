@@ -22,13 +22,10 @@
   }
   window.__myntraLabelWatch = true;
 
-  // Deliberately noisy: when autosave does not fire, these lines in the page
-  // console are the fastest way to see whether this script ran at all, whether
-  // it saw the request, and how the response came back.
   // Stamped so the console says which build a tab is actually running. A tab
   // that was not reloaded keeps the previous inject.js, and the symptom — some
   // log lines present, others missing — is otherwise very hard to read.
-  const BUILD = '2026-09-27f spa-reinject';
+  const BUILD = '2026-09-28a quiet';
 
   const startedAt = Date.now();
   // Cross-origin frames can make either of these throw. Nothing here is worth
@@ -41,8 +38,19 @@
   }
   // The millisecond offset matters: whether autosave arrives before QZ Tray is
   // contacted decides whether it can be refused at all.
-  const log = (...a) => console.log(`[picklist +${Date.now() - startedAt}ms]`, where, ...a);
-  log('build', BUILD, '— watching for label requests. autosave starts OFF until the panel says otherwise');
+  // `say`: the few lines that matter (build, autosave state, QZ allowed or
+  // refused, a label that failed). `log`: the step-by-step detail, only after
+  // __picklistDebug() is typed in the page console.
+  let debug = false;
+  const say = (...a) => console.log(`[picklist +${Date.now() - startedAt}ms]`, where, ...a);
+  const log = (...a) => {
+    if (debug) say(...a);
+  };
+  window.__picklistDebug = (on = true) => {
+    debug = on !== false;
+    say('detailed logging', debug ? 'ON' : 'OFF');
+  };
+  say('build', BUILD, '— watching for label requests. autosave starts OFF until the panel says otherwise');
 
   const LABEL_RE = /getShippingLabelForSellerPacket|getPacketInvoice/i;
   const PACKET_RE = /ready-to-ship/i;
@@ -55,8 +63,17 @@
   let qzRefused = 0;
   let qzConnected = false;
 
-  // The packet id shown on screen, kept for naming the files.
-  let packet = null;
+  // Packet ids shown on screen, by the order-release id the label URL carries
+  // (its sellerOrderId) — so each file is named after ITS packet, never after
+  // whichever packet happened to be packed last.
+  const packets = new Map(); // releaseId -> { packetId, orderId }
+  const PACKETS_KEPT = 50;
+  // Until a document on this page has matched its packet by id, the id link is
+  // unconfirmed — then the packet packed in the last FALLBACK_MS is used, as
+  // before this matching existed. Once one matched, never guess again.
+  let lastPacket = null; // { packetId, orderId, at }
+  let idMatched = false;
+  const FALLBACK_MS = 2 * 60_000;
 
   const post = (detail) => {
     try {
@@ -68,7 +85,7 @@
 
   const status = () => ({
     build: BUILD,
-    autosaveOn,
+    autosaveOn: autosaveNow(),
     msSinceCapture: lastCaptureAt ? Date.now() - lastCaptureAt : null,
     webSocketIsOurs: PrintServiceSocket !== null && window.WebSocket === PrintServiceSocket,
     printIsOurs: window.print === wrappedPrint,
@@ -78,7 +95,7 @@
   });
   // Typing __picklistStatus() in the console prints this at any time.
   window.__picklistStatus = () => {
-    log('STATUS', status());
+    say('STATUS', status());
     return status();
   };
 
@@ -86,16 +103,41 @@
     log('packet response seen. STATUS AT PACK TIME:', status());
     try {
       const body = JSON.parse(text);
-      const row = Array.isArray(body?.data) ? body.data[0] : body?.data;
-      if (row?.id) {
-        packet = {
-          packetId: row.id,
-          orderId: row.packetItems?.[0]?.portalOrderReleaseId ?? null,
-        };
+      const rows = Array.isArray(body?.data) ? body.data : body?.data ? [body.data] : [];
+      // The fallback names after the first row, as before this matching existed.
+      if (rows[0]?.id) lastPacket = { packetId: rows[0].id, orderId: rows[0].packetItems?.[0]?.portalOrderReleaseId ?? null, at: Date.now() };
+      for (const row of rows) {
+        if (!row?.id) continue;
+        for (const item of row.packetItems ?? []) {
+          const releaseId = item?.portalOrderReleaseId;
+          if (releaseId == null) continue;
+          packets.delete(String(releaseId));
+          packets.set(String(releaseId), { packetId: row.id, orderId: String(releaseId) });
+        }
       }
+      while (packets.size > PACKETS_KEPT) packets.delete(packets.keys().next().value);
     } catch {
       /* not the JSON we expected */
     }
+  };
+
+  const packetFor = (url) => {
+    let id = null;
+    try {
+      id = new URL(url, window.location.href).searchParams.get('sellerOrderId');
+    } catch {
+      /* not a URL */
+    }
+    const hit = id && packets.get(String(id));
+    if (hit) {
+      idMatched = true;
+      return { ...hit, matched: true };
+    }
+    if (!idMatched && lastPacket && Date.now() - lastPacket.at < FALLBACK_MS) {
+      say('no packet matched order', id, '— naming it after the packet just packed,', lastPacket.packetId);
+      return { packetId: lastPacket.packetId, orderId: lastPacket.orderId, matched: false };
+    }
+    return null;
   };
 
   const absolute = (url) => {
@@ -118,27 +160,62 @@
 
   const send = (url, body, contentType = '') => {
     if (body) lastCaptureAt = Date.now();
+    const packet = packetFor(url);
     log('label document', { url: absolute(url), bytes: body ? body.length : 0, contentType, packet });
     post({ type: 'LABEL_DOC', url: absolute(url), packet, body: body ?? null, contentType });
   };
 
-  // The extension tells us whether autosave is on.
+  // The extension tells us whether autosave is on. Until it has, the flag the
+  // extension's own start-of-page script sets (only while autosave is on —
+  // autosave-flag.js) answers: it is there before any page script runs, so
+  // even a QZ connection made the instant the page loads is judged right.
+  let stateKnown = false;
+  const autosaveNow = () => (stateKnown ? autosaveOn : window.__picklistAutosaveAtStart === true);
+  autosaveOn = window.__picklistAutosaveAtStart === true;
+  const liveQz = new Set(); // QZ sockets let through, closed if autosave turns on
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     if (event.data?.__myntraPicklistPanel !== true || event.data.type !== 'AUTOSAVE_STATE') return;
-    autosaveOn = event.data.on === true;
-    log('autosave is', autosaveOn ? 'ON — QZ Tray will be refused' : 'OFF — QZ Tray left alone');
+    const on = event.data.on === true;
+    if (on !== autosaveOn || !stateKnown) say('autosave is', on ? 'ON — QZ Tray will be refused' : 'OFF — QZ Tray left alone');
+    autosaveOn = on;
+    stateKnown = true;
+    if (on && liveQz.size) {
+      say('autosave is on — closing', liveQz.size, 'QZ Tray connection(s) so nothing prints');
+      for (const s of liveQz) {
+        try {
+          s.close();
+        } catch {
+          /* already closing */
+        }
+      }
+      liveQz.clear();
+    }
   });
+  // Ask for it too: when this script is put in after the page loaded (a
+  // single-page navigation), the content script's first announcement went
+  // out before anyone was listening.
+  post({ type: 'HELLO' });
+  // Put in after the page loaded (clicked through to the pack page, or the
+  // extension was updated): a QZ Tray connection the page opened earlier was
+  // never seen, so with autosave on the print dialogs can still appear until
+  // the page is reloaded. Say so (the panel shows it when autosave is on).
+  if (document.readyState !== 'loading') {
+    say('started after the page loaded — reload the pack page so autosave can stop the print dialogs');
+    post({ type: 'LATE_START' });
+  }
 
   // Myntra prints the label and the bill after packing, which is what raises
   // the two Save dialogs. When autosave has just captured both documents that
   // print is pure duplication, so it is skipped. If capture did not happen the
-  // print goes ahead as normal, so nothing is ever lost silently.
+  // print goes ahead as normal, so nothing is ever lost silently. (Myntra
+  // prints through QZ Tray today — see below — these cover the browser's own
+  // print routes should that ever change.)
   const origPrint = window.print;
   const wrappedPrint = function (...args) {
     const fresh = Date.now() - lastCaptureAt < PRINT_GRACE_MS;
     log('window.print called. autosave =', autosaveOn, '| captured recently =', fresh);
-    if (autosaveOn && fresh) {
+    if (autosaveNow() && fresh) {
       log('print skipped — the document was already saved by autosave');
       return undefined;
     }
@@ -147,28 +224,7 @@
   };
   window.print = wrappedPrint;
 
-  // The two Save dialogs did not come from window.print() in this page, so the
-  // document must be opened somewhere else to be printed. Watch for that, and
-  // once autosave has the document, do not open it at all.
-  // Everything below is here to answer one question: what raises the two Save
-  // dialogs? Each possible route logs distinctly, so a single packed order
-  // shows which one is in use.
-
-  // Fires in whichever document is actually being printed.
-  window.addEventListener('beforeprint', () => log('*** BEFOREPRINT — a print is starting in this document'));
-  window.addEventListener('afterprint', () => log('*** AFTERPRINT — that print finished'));
-
-  // A PDF turned into a blob: URL is the usual prelude to showing or printing it.
-  try {
-    const origCreateObjectURL = URL.createObjectURL;
-    URL.createObjectURL = function (obj) {
-      const url = origCreateObjectURL.call(this, obj);
-      log('URL.createObjectURL', obj?.type || typeof obj, obj?.size ?? '', '->', String(url).slice(0, 60));
-      return url;
-    };
-  } catch {
-    /* best effort */
-  }
+  window.addEventListener('beforeprint', () => log('a print is starting in this document'));
 
   // Printing a hidden iframe is the commonest way to print a PDF, and an
   // override on this window would never see it.
@@ -180,9 +236,9 @@
       const framePrint = w.print;
       w.print = function (...args) {
         const fresh = Date.now() - lastCaptureAt < PRINT_GRACE_MS;
-        log('*** IFRAME print() called. autosave =', autosaveOn, '| captured recently =', fresh);
-        if (autosaveOn && fresh) {
-          log('*** iframe print skipped — already saved by autosave');
+        log('iframe print() called. autosave =', autosaveOn, '| captured recently =', fresh);
+        if (autosaveNow() && fresh) {
+          log('iframe print skipped — already saved by autosave');
           return undefined;
         }
         return framePrint.apply(this, args);
@@ -203,7 +259,19 @@
   // awaits a reply per request and would hang — the connection is refused, so
   // QZ Tray simply looks absent. That is a path the page handles well: with QZ
   // Tray quit, packing completes normally and only these dialogs disappear.
-  const QZ_RE = /localhost|127\.0\.0\.1|\.qz\.io/i;
+  // QZ Tray's own addresses only: localhost / 127.0.0.1 / localhost.qz.io on
+  // the ports it walks (8181-8484 secure, 8182-8485 plain). Any other local
+  // socket is none of our business.
+  const QZ_HOSTS = new Set(['localhost', '127.0.0.1', 'localhost.qz.io']);
+  const QZ_PORTS = new Set(['8181', '8282', '8383', '8484', '8182', '8283', '8384', '8485']);
+  const isQzUrl = (url) => {
+    try {
+      const u = new URL(String(url));
+      return /^wss?:$/.test(u.protocol) && QZ_HOSTS.has(u.hostname) && QZ_PORTS.has(u.port);
+    } catch {
+      return false;
+    }
+  };
 
   // Mimics "nothing listening on that port": connecting, then error, then close.
   function refusedSocket(url) {
@@ -264,35 +332,28 @@
   try {
     const OriginalWebSocket = window.WebSocket;
     PrintServiceSocket = function (url, ...rest) {
-      const isQz = QZ_RE.test(String(url));
+      const isQz = isQzUrl(url);
       if (isQz) {
         qzAttempts += 1;
-        const fresh = Date.now() - lastCaptureAt < PRINT_GRACE_MS;
-        log(`*** QZ attempt #${qzAttempts}`, String(url), '| autosave =', autosaveOn, '| captured recently =', fresh);
-        if (autosaveOn) {
+        log(`QZ attempt #${qzAttempts}`, String(url), '| autosave =', autosaveNow());
+        if (autosaveNow()) {
           qzRefused += 1;
-          log('*** REFUSED — autosave has the documents, so nothing should print');
+          say('QZ Tray REFUSED — autosave saves the documents, so nothing should print');
           return refusedSocket(url);
         }
-        log('*** allowing it through (autosave is off)');
+        say('QZ Tray: allowing it through (autosave is off)');
       }
       const socket = new OriginalWebSocket(url, ...rest);
       if (isQz) {
+        liveQz.add(socket);
         socket.addEventListener('open', () => {
           qzConnected = true;
-          log('*** QZ Tray CONNECTED — it is running, and this is what prints');
+          log('QZ Tray connected — it is running, and this is what prints');
         });
-        socket.addEventListener('close', (e) => log('*** QZ socket closed, code', e?.code));
-        socket.addEventListener('message', (e) => {
-          const body = typeof e.data === 'string' ? e.data : `(${typeof e.data})`;
-          log('*** QZ ->', body.slice(0, 200));
+        socket.addEventListener('close', (e) => {
+          liveQz.delete(socket);
+          log('QZ socket closed, code', e?.code);
         });
-        const originalSend = socket.send.bind(socket);
-        socket.send = function (data) {
-          const body = typeof data === 'string' ? data : `(${typeof data})`;
-          log('*** QZ <-', body.slice(0, 400));
-          return originalSend(data);
-        };
       }
       return socket;
     };
@@ -307,16 +368,16 @@
     // a hook that never worked.
     setInterval(() => {
       if (window.WebSocket !== PrintServiceSocket) {
-        log('!!! window.WebSocket had been replaced — re-installing');
+        say('window.WebSocket had been replaced — re-installing');
         window.WebSocket = PrintServiceSocket;
       }
       if (window.print !== wrappedPrint) {
-        log('!!! window.print had been replaced — re-installing');
+        say('window.print had been replaced — re-installing');
         window.print = wrappedPrint;
       }
     }, 1000);
   } catch (err) {
-    log('!!! could not install the WebSocket hook:', String(err?.message ?? err));
+    say('could not install the WebSocket hook:', String(err?.message ?? err));
   }
 
   const origWindowOpen = window.open;
@@ -324,7 +385,7 @@
     const target = String(url ?? '');
     log('window.open ->', target || '(no url)');
     const fresh = Date.now() - lastCaptureAt < PRINT_GRACE_MS;
-    if (target && LABEL_RE.test(target) && autosaveOn && fresh) {
+    if (target && LABEL_RE.test(target) && autosaveNow() && fresh) {
       log('window.open skipped — that document was already saved by autosave');
       // A stub, so page code calling .print() or .close() on the result does
       // not throw. Returning null outright breaks some callers.
@@ -351,7 +412,7 @@
       // Any frame or embed at all is worth reporting — it may carry a blob: URL
       // rather than the label URL, and would otherwise look like nothing.
       if (tag === 'IFRAME' || tag === 'EMBED' || tag === 'OBJECT') {
-        log('*** added', tag, 'src=', String(src).slice(0, 80) || '(none)');
+        log('added', tag, 'src=', String(src).slice(0, 80) || '(none)');
         if (tag === 'IFRAME') {
           hookFrame(node);
           node.addEventListener?.('load', () => hookFrame(node), { once: true });
@@ -360,7 +421,7 @@
         log('element added pointing at a label:', tag, src);
       }
       node.querySelectorAll?.('iframe,embed,object').forEach((el) => {
-        log('*** nested', el.tagName, 'src=', String(el.getAttribute('src') || '').slice(0, 80) || '(none)');
+        log('nested', el.tagName, 'src=', String(el.getAttribute('src') || '').slice(0, 80) || '(none)');
         if (el.tagName === 'IFRAME') hookFrame(el);
       });
     };
@@ -375,24 +436,37 @@
 
   const origFetch = window.fetch;
   window.fetch = function (...args) {
-    const url = typeof args[0] === 'string' ? args[0] : args[0]?.url;
+    const input = args[0];
+    const url = typeof input === 'string' ? input : input?.url ?? (input ? String(input) : '');
+    const isLabel = !!url && LABEL_RE.test(url);
+    // What a retry needs to repeat THIS request exactly — Myntra's API wants
+    // the page's own x-myntra headers, not just the cookie. A Request object
+    // can only be read once, so a copy is taken before the page's goes out.
+    let again = null;
+    if (isLabel) {
+      try {
+        again = typeof Request !== 'undefined' && input instanceof Request ? { input: input.clone(), init: args[1] } : { input: url, init: args[1] };
+      } catch {
+        again = { input: url, init: args[1] };
+      }
+    }
     const out = origFetch.apply(this, args);
     if (!url) return out;
-    if (LABEL_RE.test(url)) log('fetch ->', url);
-    if (LABEL_RE.test(url)) {
+    if (isLabel) {
+      log('fetch ->', url);
       out.catch((err) => {
-        log('*** label request FAILED:', String(err?.message ?? err), '-', absolute(url));
-        retryLabel(url);
+        say('label request FAILED:', String(err?.message ?? err), '-', absolute(url));
+        retryLabel(url, again, String(err?.message ?? err));
       });
     }
     return out.then((res) => {
       try {
         if (PACKET_RE.test(url)) {
           res.clone().text().then(notePacket).catch(() => {});
-        } else if (LABEL_RE.test(url)) {
+        } else if (isLabel) {
           if (!res.ok) {
-            log('*** label request returned', res.status, res.statusText, '-', absolute(url));
-            retryLabel(url);
+            say('label request returned', res.status, res.statusText, '-', absolute(url));
+            retryLabel(url, again, `${res.status} ${res.statusText}`);
             return res;
           }
           // clone() so the page still reads its own response normally
@@ -412,29 +486,49 @@
 
   // Myntra's server sometimes answers a label request with a 500, and the page
   // does not retry — the document is simply missing until someone notices and
-  // re-downloads it. One quiet retry costs nothing and saves that.
-  const retried = new Set();
-  async function retryLabel(url) {
+  // re-downloads it. One quiet retry (the same request, headers and all) costs
+  // nothing and saves that. Once per document per minute, so a re-download
+  // later that fails again gets its own retry.
+  const RETRY_AGAIN_AFTER_MS = 60_000;
+  const retriedAt = new Map();
+  const retrying = new Set(); // a retry still waiting / in flight reports for itself
+  async function retryLabel(url, again, why = 'failed') {
+    // Autosave off: the page is left exactly as it is — no extra request.
+    if (!autosaveNow()) return;
     const absoluteUrl = absolute(url);
-    if (retried.has(absoluteUrl)) {
-      log('*** already retried that label once, leaving it');
+    if (retrying.has(absoluteUrl)) return;
+    const last = retriedAt.get(absoluteUrl);
+    if (last && Date.now() - last < RETRY_AGAIN_AFTER_MS) {
+      log('already retried that label just now, leaving it');
+      post({ type: 'LABEL_FAILED', url: absoluteUrl, detail: why });
       return;
     }
-    retried.add(absoluteUrl);
-    await new Promise((r) => setTimeout(r, 1500));
-    log('*** retrying the failed label request…');
+    retriedAt.set(absoluteUrl, Date.now());
+    retrying.add(absoluteUrl);
     try {
-      const res = await origFetch(absoluteUrl, { credentials: 'include' });
+      await retryOnce(absoluteUrl, again);
+    } finally {
+      retrying.delete(absoluteUrl);
+    }
+  }
+  async function retryOnce(absoluteUrl, again) {
+    for (const [u, at] of retriedAt) if (Date.now() - at > RETRY_AGAIN_AFTER_MS) retriedAt.delete(u);
+    await new Promise((r) => setTimeout(r, 1500));
+    say('retrying the failed label request…');
+    try {
+      // Never the page's own AbortSignal: a page that aborted (or timed out)
+      // its request would abort the retry before it went out.
+      const res = again ? await origFetch(again.input, { ...(again.init || {}), signal: null }) : await origFetch(absoluteUrl, { credentials: 'include' });
       if (!res.ok) {
-        log('*** retry also failed:', res.status, res.statusText, '— re-download it from Myntra');
+        say('retry also failed:', res.status, res.statusText, '— re-download it from Myntra');
         post({ type: 'LABEL_FAILED', url: absoluteUrl, detail: `${res.status} ${res.statusText}` });
         return;
       }
       const buf = await res.arrayBuffer();
-      log('*** retry succeeded,', buf.byteLength, 'bytes');
+      say('retry succeeded,', buf.byteLength, 'bytes');
       send(absoluteUrl, toBase64(buf), res.headers.get('content-type') ?? '');
     } catch (err) {
-      log('*** retry failed:', String(err?.message ?? err), '— re-download it from Myntra');
+      say('retry failed:', String(err?.message ?? err), '— re-download it from Myntra');
       post({ type: 'LABEL_FAILED', url: absoluteUrl, detail: String(err?.message ?? err) });
     }
   }

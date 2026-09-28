@@ -145,6 +145,7 @@ button.icon {
 .status.bad { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); }
 .warnings { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text); }
 .warnings ul { margin: 0; padding-left: 16px; }
+.warnings button { margin-top: 6px; }
 
 .drop {
   display: block;

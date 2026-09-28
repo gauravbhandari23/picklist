@@ -20,10 +20,15 @@ if (!window.__myntraPicklistPanel) {
   const isUsable = (el) => el && isVisible(el) && !el.disabled && !el.readOnly;
   const describe = (el) => [el.placeholder, el.getAttribute('aria-label'), el.name, el.id].filter(Boolean).join(' ');
 
+  // The first box matching the hints, in hint order — a visible one before a
+  // hidden one under the same hint (a page can keep a hidden copy of the box in
+  // an old modal; picking that one reported the box as locked). A visible but
+  // locked box is still the answer: that's "locked", never a different box.
   function findInput(hints) {
     const inputs = [...document.querySelectorAll('input')];
     for (const re of hints) {
-      const hit = inputs.find((el) => re.test(describe(el)));
+      const hits = inputs.filter((el) => re.test(describe(el)));
+      const hit = hits.find(isVisible) ?? hits[0];
       if (hit) return hit;
     }
     return null;
@@ -100,7 +105,8 @@ if (!window.__myntraPicklistPanel) {
   const pushAutosaveState = (on) =>
     window.postMessage({ __myntraPicklistPanel: true, type: 'AUTOSAVE_STATE', on: on === true }, window.location.origin);
 
-  chrome.storage.local.get('autosave').then((s) => pushAutosaveState(s.autosave)).catch(() => {});
+  const announceAutosave = () => chrome.storage.local.get('autosave').then((s) => pushAutosaveState(s.autosave)).catch(() => {});
+  announceAutosave();
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.autosave) pushAutosaveState(changes.autosave.newValue);
   });
@@ -111,6 +117,16 @@ if (!window.__myntraPicklistPanel) {
     if (event.source !== window) return;
     const msg = event.data;
     if (msg?.__myntraPicklistPanel !== true) return;
+    // inject.js started after our first announcement (put in after a
+    // single-page navigation) and is asking.
+    if (msg.type === 'HELLO') {
+      announceAutosave();
+      return;
+    }
+    if (msg.type === 'LATE_START') {
+      chrome.runtime.sendMessage({ type: 'LATE_START' }).catch(() => {});
+      return;
+    }
     if (msg.type === 'LABEL_FAILED') {
       console.log('[picklist] label request failed for good:', msg.detail);
       chrome.runtime

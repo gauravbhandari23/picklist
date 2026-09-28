@@ -482,8 +482,8 @@ Constraints worth remembering:
   `window.print` and skips it when autosave captured a document in the last 20
   seconds. Outside that window, or with autosave off, printing is untouched: a
   failed capture must never leave someone with no document and no dialog.
-- Content scripts run with `all_frames: true`, since a label printed from an
-  iframe would otherwise miss the override entirely.
+- Content scripts run in the top frame only. A label printed from an iframe is
+  still covered: `inject.js` hooks `print()` on every iframe the page adds.
 - **The browser is not what prints these documents.** A packed order produces no
   `beforeprint`, no `window.print`, no `window.open` and no iframe — yet the two
   Save dialogs still appear. The page connects to **QZ Tray**, a native printing
@@ -505,7 +505,27 @@ Constraints worth remembering:
   The refusal is a stub socket that fires `error` then `close` after a tick,
   exactly as a closed port does. QZ's client then walks its other ports (8181,
   8282, 8383, 8484, and the same on `localhost.qz.io`), each refused the same
-  way, and gives up.
+  way, and gives up. Only QZ Tray's own hosts (`localhost`, `127.0.0.1`,
+  `localhost.qz.io`) on its own ports (8181/8282/8383/8484 secure,
+  8182/8283/8384/8485 plain) are refused — any other local socket connects
+  normally.
+
+  The page contacts QZ Tray while it loads, so the autosave state has to be
+  there first. While autosave is on, `background.js` registers
+  `autosave-flag.js` (`chrome.scripting.registerContentScripts`, MAIN world,
+  `document_start`), which sets a flag before any page script runs — so even a
+  QZ connection made the instant the page loads is refused. With autosave off it
+  isn't registered and the page is untouched. On top of that `content.js` (also
+  `document_start`) relays the setting, and `inject.js` asks for it (`HELLO`)
+  when it starts — after a single-page navigation it is injected later than
+  `content.js`, whose first announcement then went out before anyone was
+  listening. Turning autosave on closes any QZ Tray connection that is open
+  (nothing should print now); turning it off never closes one — but a
+  connection refused earlier isn't reopened by the page on its own, so the
+  panel says to reload the pack page after switching autosave. A script that
+  arrives after the page loaded (clicked through to the pack page, or the
+  extension was just updated) can't see a QZ connection made before it, so it
+  says so, and with autosave on the panel asks for a reload.
 
   With autosave off, QZ Tray is left entirely alone.
 
@@ -547,11 +567,60 @@ tell apart from the script never arriving.
 Opening the pack URL directly in the address bar was always fine; it is
 in-app navigation that skipped injection.
 
+### Naming each file after its own packet
+
+The `ready-to-ship` response lists the packet id with each item's
+`portalOrderReleaseId`; the label and invoice URLs carry that same number as
+`sellerOrderId`. `inject.js` keeps the last 50 of those pairs and sends each
+document with the packet whose release id matches its URL, else the order id
+from the URL names it. It used to take whichever packet was packed last, so a
+late or missed `ready-to-ship` answer named a file after the wrong packet.
+That the two numbers are the same one is read off their shape, not yet seen
+side by side on a real pack — so until a document on the page has matched its
+packet by id, the packet packed in the last 2 minutes still names it (the old
+behaviour, with a console line saying so); after one match, never.
+
+### Guard rails
+
+- `background.js` takes documents only from its own content script on the pack
+  site (`mdirect.myntrainfo.com`, any route — the app can move off
+  `/PackOrder/` while a document is on its way), and saves at most 30 a minute
+  (a real pack makes two) — one over the limit is reported in the panel, never
+  dropped silently.
+- Filling picks the scan box by its wording, in order, a visible box before a
+  hidden copy (an old modal). A visible box the page has locked answers
+  "locked" — the SKU never goes into some other box that happens to match.
+- With autosave **off** nothing is retried or reported: the page prints as it
+  always did.
+- A failed label is retried with **the page's own request** — its
+  `x-myntra-*` headers included (a bare re-request earned a 401), but never its
+  abort signal (a page that gave up on its request would cancel the retry too)
+  — once per document per minute; a failure inside that minute is reported
+  without another retry, except while that retry is still pending (it reports
+  its own result — no "not saved" for a document that then saves).
+- The panel fills one SKU at a time: a double click used to send the SKU twice,
+  scanned twice on Myntra and ticked twice here.
+- "Label / bill not saved" notes stay in the warnings box, timestamped, until
+  **Dismiss** — as a status line the next click wiped them before anyone read
+  them.
+- A document with a rotated page, a page showing only part of its sheet
+  (CropBox), or a sheet not starting at 0,0 is saved exactly as Myntra sent it
+  instead of being re-paged (Myntra's own label and invoice have none of these).
+- After updating the extension, reload any open pack tab — the old copy of the
+  page scripts stays in it until then.
+
 ### Diagnosing from the console
 
 `inject.js` logs under `[picklist +Nms]`, the offset being milliseconds since it
 started. That ordering is the point: whether the autosave state arrives before
 the page contacts QZ Tray decides whether it can be refused at all.
+
+By default only the lines that matter are printed: the build stamp, the
+autosave state, each QZ Tray connection allowed or refused, and a label that
+failed or was retried. Type `__picklistDebug()` in the page console for the
+step-by-step detail (each label request, packet responses, iframes, print
+calls); `__picklistDebug(false)` turns it off. The contents of QZ Tray's
+messages are never logged.
 
 Its first line is a **build stamp**. A content script only changes when the
 *page* is reloaded, not when the extension is, so a tab can keep running an old
@@ -567,16 +636,17 @@ Typing `__picklistStatus()` in the page console prints, at any moment:
 ```
 
 The same line is printed automatically when a packet is packed, which is the
-moment that matters. `webSocketIsOurs: false` means a later bundle replaced the
-hook; that is now checked every second and re-installed, with a `!!!` line
-saying so, because a silently replaced hook looks exactly like one that never
-worked.
+moment that matters (with `__picklistDebug()` on). `webSocketIsOurs: false`
+means a later bundle replaced the hook; that is now checked every second and
+re-installed, with a line saying so, because a silently replaced hook looks
+exactly like one that never worked.
 
 ### Two details worth keeping
 
 **Myntra's server sometimes 500s a label request.** The page does not retry, so
 the document is simply missing until someone notices. `inject.js` retries once
-after a pause and, if that fails too, says so in the panel. Seen live: a pack
+after a pause (the same request, headers and all) and, if that fails too, says
+so in the panel. Seen live: a pack
 saved only the invoice because the label came back `500`, with nothing on
 screen to explain it.
 

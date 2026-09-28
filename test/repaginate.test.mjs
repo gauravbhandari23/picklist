@@ -68,3 +68,36 @@ async function describe(bytes) {
   assert.ok(Math.abs(fit.height - sheet.height) < 1e-9, 'the long edge should fill the sheet');
   console.log('PASS  content is scaled to fit and centred, never stretched');
 }
+
+/* A rotated page is saved exactly as sent, never turned by re-paging */
+{
+  const { PDFDocument, degrees } = await import('../lib/pdf-lib.esm.min.js');
+  const doc = await PDFDocument.load(readFileSync(here('fixtures/label-4x6.pdf')));
+  doc.getPage(0).setRotation(degrees(90));
+  const rotated = await doc.save();
+  const out = await repaginate(rotated, 'letter');
+  assert.equal(out, rotated, 'handed back untouched');
+  console.log('PASS  a rotated page is left exactly as Myntra sent it');
+}
+
+/* A sheet whose origin isn't 0,0 is saved as sent (pdf-lib would shift and clip it) */
+{
+  const { PDFDocument } = await import('../lib/pdf-lib.esm.min.js');
+  const doc = await PDFDocument.load(readFileSync(here('fixtures/label-4x6.pdf')));
+  const p = doc.getPage(0);
+  p.setMediaBox(100, 100, 288, 432);
+  p.setCropBox(100, 100, 288, 432);
+  const moved = await doc.save();
+  assert.equal(await repaginate(moved, 'letter'), moved, 'handed back untouched');
+  console.log('PASS  a sheet not starting at 0,0 is left exactly as sent');
+}
+
+/* A page showing only part of its sheet (CropBox smaller than MediaBox) is saved as sent */
+{
+  const { PDFDocument } = await import('../lib/pdf-lib.esm.min.js');
+  const doc = await PDFDocument.load(readFileSync(here('fixtures/label-4x6.pdf')));
+  doc.getPage(0).setCropBox(10, 10, 200, 300);
+  const cropped = await doc.save();
+  assert.equal(await repaginate(cropped, 'letter'), cropped, 'handed back untouched');
+  console.log('PASS  a CropBox page is left exactly as sent');
+}

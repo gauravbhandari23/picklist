@@ -139,11 +139,18 @@ named properly.
 The dialogs themselves come from **QZ Tray**, a printing application on the PC,
 not from the browser. While autosave is on the extension refuses its
 connection, so it looks absent and nothing prints. You do not need to quit it;
-with autosave off it is left completely alone.
+with autosave off it is left completely alone. The pack page decides this when
+it loads, so **reload the pack page after switching Autosave** (and after
+updating the extension).
 
 If Myntra's server refuses a document — it sometimes answers a label request
 with a 500 — the request is retried once, and if that also fails the panel says
-so rather than leaving you a file short without a word.
+so rather than leaving you a file short without a word. That note stays in the
+yellow box, with the time, until you press **Dismiss**.
+
+Each file is named after its own packet: the extension matches the order number
+in the label's address to the packet it came from, and uses the order number
+itself if it can't.
 
 ## What it deliberately does not do
 
@@ -161,6 +168,7 @@ so rather than leaving you a file short without a word.
 | Couldn't reach the pack page. | Rare — the tab refused injection. Reload that tab. |
 | That box isn't on the pack page right now. | Myntra changed the field, or that step isn't on screen yet. Type by hand and report it. |
 | Filled …, but Myntra did not clear the box | The SKU went in but was not accepted. Check the page. |
+| The Myntra box is locked right now | The page has locked the box (usually mid-item). Finish the item on screen first. |
 | A yellow warning bar | The PDF did not parse cleanly. Check the list before packing. |
 
 ## Tests
@@ -175,6 +183,10 @@ for f in test/*.test.mjs; do node "$f" || break; done
 | `multiqty.test.mjs` | Quantity > 1, the same SKU on two lines, total mismatch warning, splitting a quantity into one row per item |
 | `barcode.test.mjs` | Picklist ID barcode → `OP22355506`, mirrored, upscaled, and noise → `null` |
 | `layout.test.mjs` | The panel scrolls in exactly one place, and the top section stays pinned |
+| `inject.test.mjs` | QZ Tray refused only while autosave is on and only on its own ports (start-of-page flag, relayed state, early connections), the autosave hello, files named after their own packet (and the fallback), a failed label retried with its own request, timing windows, late start |
+| `content.test.mjs` | Which box a fill goes into (a locked box says "locked"; a hidden copy is skipped), the hello reply |
+| `background.test.mjs` | The start-of-page flag follows the setting, documents only from the pack site, the per-minute limit, failures reported only with autosave on |
+| `labels.test.mjs` / `repaginate.test.mjs` | Recognising the documents, unwrapping the label's envelope, re-paging (a rotated page is left as sent) |
 
 No browser needed for any of them.
 

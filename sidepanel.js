@@ -35,6 +35,7 @@ const REASONS = {
   'no-tab': 'No Myntra pack page is open. Open PackOrder/Operations in a tab.',
   'no-content-script': "Couldn't reach the pack page. Reload that tab and try again.",
   'no-field': "That box isn't on the pack page right now.",
+  locked: 'The Myntra box is locked right now — finish the item on screen first.',
 };
 const reasonText = (r) => REASONS[r] ?? 'Could not reach the pack page.';
 
@@ -71,17 +72,32 @@ function mismatchWarning() {
   return [`This PDF is picklist ${pdf} but the page has ${page} open. Wrong file?`];
 }
 
+// A label or bill that didn't save stays on screen until dismissed — as a
+// status line the next click would wipe it before anyone read it.
+let saveProblems = [];
+
 function showWarnings(list) {
   els.warnings.replaceChildren();
-  els.warnings.hidden = list.length === 0;
-  if (!list.length) return;
+  const all = [...list, ...saveProblems];
+  els.warnings.hidden = all.length === 0;
+  if (!all.length) return;
   const ul = document.createElement('ul');
-  for (const w of list) {
+  for (const w of all) {
     const li = document.createElement('li');
     li.textContent = w;
     ul.append(li);
   }
   els.warnings.append(ul);
+  if (saveProblems.length) {
+    const btn = document.createElement('button');
+    btn.textContent = 'Dismiss';
+    btn.title = 'Hide the not-saved notes';
+    btn.addEventListener('click', () => {
+      saveProblems = [];
+      render();
+    });
+    els.warnings.append(btn);
+  }
 }
 
 /* ---------- render ---------- */
@@ -174,7 +190,15 @@ function scrollToNext() {
 
 /* ---------- actions ---------- */
 
+// One fill at a time: a double click used to send the SKU twice — scanned
+// twice on Myntra's side and ticked twice here.
+let filling = false;
+
 async function fillRow(i) {
+  if (filling) {
+    status('Still filling the last one — one moment.');
+    return;
+  }
   const row = state.rows[i];
   if (isDone(row)) {
     status('Already packed. Use the ✓ to undo.');
@@ -186,7 +210,13 @@ async function fillRow(i) {
     return;
   }
 
-  const res = await chrome.runtime.sendMessage({ type: 'FILL', value }).catch(() => null);
+  filling = true;
+  let res;
+  try {
+    res = await chrome.runtime.sendMessage({ type: 'FILL', value }).catch(() => null);
+  } finally {
+    filling = false;
+  }
 
   // Tick as soon as the SKU actually went into the box. If we never reached the
   // page at all, the click did nothing, so ticking would be a lie.
@@ -206,10 +236,14 @@ async function fillRow(i) {
 }
 
 async function fillPicklistId() {
-  if (!state.picklistId) return;
-  const res = await chrome.runtime
-    .sendMessage({ type: 'FILL_PICKLIST', value: state.picklistId })
-    .catch(() => null);
+  if (!state.picklistId || filling) return;
+  filling = true;
+  let res;
+  try {
+    res = await chrome.runtime.sendMessage({ type: 'FILL_PICKLIST', value: state.picklistId }).catch(() => null);
+  } finally {
+    filling = false;
+  }
 
   if (res?.ok) {
     status(res.submitted ? '' : 'Filled the Picklist ID, but the page did not move on.', !res.submitted);
@@ -382,10 +416,11 @@ els.pageSize.addEventListener('change', () => {
 els.autosave.addEventListener('change', () => {
   const on = els.autosave.checked;
   chrome.storage.local.set({ autosave: on });
+  // An open pack page already decided about QZ Tray when it loaded.
   status(
     on
-      ? 'Autosave on — the label and bill save themselves, and the print dialogs are skipped.'
-      : 'Autosave off — Myntra prints as usual and you save by hand.',
+      ? 'Autosave on — the label and bill save themselves, and the print dialogs are skipped. Reload the pack page if it is open.'
+      : 'Autosave off — Myntra prints as usual and you save by hand. Reload the pack page so it can print again.',
   );
 });
 
@@ -408,6 +443,8 @@ const AUTOSAVE_PROBLEMS = {
   html: 'Myntra returned a web page, not a PDF — save that one by hand.',
   'json-without-pdf': 'Myntra returned data, not a PDF — save that one by hand.',
   'not-a-pdf': 'That download was not a PDF — save it by hand.',
+  'rate-limited': 'Too many documents in a minute — save that one by hand.',
+  'late-start': 'The pack page was opened by clicking through Myntra (or before this extension updated) — reload it so autosave can stop the print dialogs.',
 };
 
 chrome.runtime.onMessage.addListener((msg) => {
@@ -422,7 +459,11 @@ chrome.runtime.onMessage.addListener((msg) => {
     if (msg.ok) status(`${what} saved: ${msg.filename.split('/').pop()}`);
     else {
       const why = AUTOSAVE_PROBLEMS[msg.reason] ?? msg.reason;
-      status(`${what} not saved. ${why}${msg.detail ? ` (${msg.detail})` : ''}`, true);
+      const at = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const note = msg.reason === 'late-start' ? why : `${what} not saved. ${why}${msg.detail ? ` (${msg.detail})` : ''}`;
+      // The same note twice in a row adds nothing.
+      if (!saveProblems.some((p) => p.endsWith(note))) saveProblems = [...saveProblems, `${at} — ${note}`].slice(-5);
+      render();
     }
   }
 });
