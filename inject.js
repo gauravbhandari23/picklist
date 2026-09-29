@@ -561,7 +561,10 @@
             .catch(() => send(url, null, xhrType));
         }
         else if (typeof this.responseText === 'string') {
-          send(url, btoa(unescape(encodeURIComponent(this.responseText))), xhrType);
+          // Encode the text as UTF-8 bytes, then convert to Base64 without
+          // the deprecated unescape() function.
+          const textBytes = new TextEncoder().encode(this.responseText);
+          send(url, toBase64(textBytes.buffer), xhrType);
         } else send(url, null, xhrType);
       } catch {
         /* same — stay out of the page's way */
