@@ -203,6 +203,16 @@ if (!window.__myntraPicklistPanel) {
     return findSmartInput(['cover', 'packet', 'awb', 'bag']);
   }
 
+  // Plain .focus() is ignored by Myntra's React — simulate a real mouse click
+  // so the framework registers the input as truly active for barcode scanning.
+  function forceActivate(el) {
+    if (document.activeElement === el) return;
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    el.focus();
+    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  }
+
   // ── The automation loop (200 ms) ───────────────────────────────────────────
 
   setInterval(() => {
@@ -224,18 +234,18 @@ if (!window.__myntraPicklistPanel) {
     }
 
     if (localState.autopack) {
-      // PRIORITY 1: Cover ID modal — focus and HALT (never click behind it)
+      // PRIORITY 1: Cover ID modal — activate and HALT (never click behind it)
       const packetInput = getPacketInput();
       if (packetInput && isUsable(packetInput)) {
-        if (document.activeElement !== packetInput) packetInput.focus();
+        forceActivate(packetInput);
         return;
       }
 
-      // PRIORITY 2: Tag modal — focus and HALT
+      // PRIORITY 2: Tag modal — activate and HALT
       const tagInput = getTagInput();
       const skipBtn = findButtonByText(/^SKIP$/i);
       if ((tagInput && isUsable(tagInput)) || skipBtn) {
-        if (tagInput && isUsable(tagInput) && document.activeElement !== tagInput) tagInput.focus();
+        if (tagInput && isUsable(tagInput)) forceActivate(tagInput);
         return;
       }
 
