@@ -1,7 +1,7 @@
-// Runs on the Myntra pack page. Two jobs only:
+// Runs on the Myntra pack page. Three jobs:
 //   1. fill the Picklist ID or the Product SKU box when the panel asks
 //   2. report which picklist the page currently has open
-// It never clicks SKIP, PASS or PACK.
+//   3. (when enabled) auto-focus Tag / Cover inputs & auto-click PASS / PACK / Scan Next
 
 // The service worker may inject this file into a tab that already has it, so
 // make a second copy a no-op instead of doubling every listener and timer.
@@ -13,6 +13,8 @@ if (!window.__myntraPicklistPanel) {
     FILL_PICKLIST: { hints: [/picklist\s*id/i], label: 'scan picklist id' },
   };
   const SUBMIT_CHECK_MS = 250;
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
   // getClientRects beats offsetParent here: offsetParent is null for anything
   // position:fixed, which is exactly what Myntra's modals are.
@@ -36,178 +38,160 @@ if (!window.__myntraPicklistPanel) {
 
   // If Myntra ever drops the placeholder, fall back to the first usable input
   // after the matching heading.
-  function setNativeValue(el, value) {
-    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-    if (setter) setter.call(el, value);
-    else el.value = value;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
-  // A hardware scanner submits by typing Enter, so the page already handles these
-  // events. We send the same ones rather than forcing a form submit, which could
-  // scan the item twice.
-  function pressEnter(el) {
-    const init = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
-    for (const type of ['keydown', 'keypress', 'keyup']) el.dispatchEvent(new KeyboardEvent(type, init));
-  }
-
-  function fill({ hints, label }, value, sendResponse) {
-    const el = findInput(hints) ?? inputAfterLabel(label);
-    if (!el) {
-      sendResponse({ ok: false, reason: 'no-field' });
-      return;
-    }
-    // The box exists but the page has locked it — usually already filled in.
-    if (!isUsable(el)) {
-      sendResponse({ ok: false, reason: 'locked', current: el.value?.trim() || null });
-      return;
-    }
-    el.focus();
-    setNativeValue(el, value);
-    pressEnter(el);
-
-    // On a successful scan Myntra clears the box. If the text is still sitting
-    // there, say so instead of pretending it worked.
-    setTimeout(() => {
-      sendResponse({ ok: true, submitted: !(el.isConnected && el.value === value) });
-    }, SUBMIT_CHECK_MS);
-  }
-
-  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg?.type === 'DIAG') {
-      console.log('[picklist]', ...msg.parts);
-      return false;
-    }
-    const target = TARGETS[msg?.type];
-    if (!target) return false;
-    fill(target, msg.value, sendResponse);
-    return true; // async reply
-  });
-
-  // The page world cannot read chrome.storage, so push the autosave state in —
-  // now, and again whenever it is toggled.
-  const pushAutosaveState = (on) =>
-    window.postMessage({ __myntraPicklistPanel: true, type: 'AUTOSAVE_STATE', on: on === true }, window.location.origin);
-
-  const announceAutosave = () => chrome.storage.local.get('autosave').then((s) => pushAutosaveState(s.autosave)).catch(() => {});
-  announceAutosave();
-
-  let localState = { autopack: false, autonext: false, lastActionTime: 0, clickHistory: {} };
-
-  // Robust input finder that checks both hints and nearby labels
-  function safeClick(btn, name) {
-    const now = Date.now();
-    if (localState.clickHistory[name] && now - localState.clickHistory[name] < 3000) {
-      return false; // Prevent infinite click loops if user manually closes a modal
-    }
-    btn.click();
-    localState.clickHistory[name] = now;
-    localState.lastActionTime = now;
-    return true;
-  }
-
-
-
-  // If Myntra ever drops the placeholder, fall back to the first usable input
-  // after the matching heading.
-  function setNativeValue(el, value) {
-    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-    if (setter) setter.call(el, value);
-    else el.value = value;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
-  // A hardware scanner submits by typing Enter, so the page already handles these
-  // events. We send the same ones rather than forcing a form submit, which could
-  // scan the item twice.
-  function pressEnter(el) {
-    const init = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
-    for (const type of ['keydown', 'keypress', 'keyup']) el.dispatchEvent(new KeyboardEvent(type, init));
-  }
-
-  function fill({ hints, label }, value, sendResponse) {
-    const el = findInput(hints) ?? inputAfterLabel(label);
-    if (!el) {
-      sendResponse({ ok: false, reason: 'no-field' });
-      return;
-    }
-    // The box exists but the page has locked it — usually already filled in.
-    if (!isUsable(el)) {
-      sendResponse({ ok: false, reason: 'locked', current: el.value?.trim() || null });
-      return;
-    }
-    el.focus();
-    setNativeValue(el, value);
-    pressEnter(el);
-
-    // On a successful scan Myntra clears the box. If the text is still sitting
-    // there, say so instead of pretending it worked.
-    setTimeout(() => {
-      sendResponse({ ok: true, submitted: !(el.isConnected && el.value === value) });
-    }, SUBMIT_CHECK_MS);
-  }
-
-  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg?.type === 'DIAG') {
-      console.log('[picklist]', ...msg.parts);
-      return false;
-    }
-    const target = TARGETS[msg?.type];
-    if (!target) return false;
-    fill(target, msg.value, sendResponse);
-    return true; // async reply
-  });
-
-  // The page world cannot read chrome.storage, so push the autosave state in —
-  // now, and again whenever it is toggled.
-  const pushAutosaveState = (on) =>
-    window.postMessage({ __myntraPicklistPanel: true, type: 'AUTOSAVE_STATE', on: on === true }, window.location.origin);
-
-  const announceAutosave = () => chrome.storage.local.get('autosave').then((s) => pushAutosaveState(s.autosave)).catch(() => {});
-  announceAutosave();
-
-  let localState = { autopack: false, autonext: false, lastActionTime: 0, clickHistory: {} };
-
-  // Robust input finder that checks both hints and nearby labels
-  function safeClick(btn, name) {
-    const now = Date.now();
-    if (localState.clickHistory[name] && now - localState.clickHistory[name] < 3000) {
-      return false; // Prevent infinite click loops if user manually closes a modal
-    }
-    btn.click();
-    localState.clickHistory[name] = now;
-    localState.lastActionTime = now;
-    return true;
-  }
-
-  // Bulletproof input finder that looks at the input's own attributes AND the text right above it.
-  function findSmartInput(keywords) {
-    const inputs = [...document.querySelectorAll('input')].filter(isUsable);
-    
-    for (const el of inputs) {
-      const text = [el.placeholder, el.getAttribute('aria-label'), el.name, el.id].join(' ').toLowerCase();
-      
-      // EXCLUDE the main page inputs so we never accidentally mistake them for a Popup Modal
-      if (text.includes('product') || text.includes('sku') || text.includes('picklist')) continue;
-      
-      // 1. Try exact matches on the input itself
-      if (keywords.some(k => text.includes(k))) return el;
-      
-      // 2. Try contextual matches (look at the text of the surrounding div to catch the label)
-      let container = el.parentElement;
-      for (let i = 0; i < 5; i++) { // Walk up 5 levels of wrappers
-         if (!container || container === document.body) break;
-         // Only look at direct text, not the entire page
-         const containerText = container.innerText?.toLowerCase() || '';
-         if (keywords.some(k => containerText.includes(k))) return el;
-         container = container.parentElement;
+  function inputAfterLabel(text) {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+    let labelNode = null;
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.nodeValue.trim().toLowerCase() === text) {
+        labelNode = node.parentNode;
+        break;
       }
     }
-    
+    if (!labelNode) return null;
+    const inputs = document.querySelectorAll('input');
+    for (let i = 0; i < inputs.length; i++) {
+      if (isUsable(inputs[i]) && (labelNode.compareDocumentPosition(inputs[i]) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+        return inputs[i];
+      }
+    }
+    return null;
+  }
+
+  // React keeps its own copy of the value, so a plain `el.value = x` is ignored.
+  // Going through the prototype setter makes React see a real change.
+  function setNativeValue(el, value) {
+    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    if (setter) setter.call(el, value);
+    else el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // A hardware scanner submits by typing Enter, so the page already handles these
+  // events. We send the same ones rather than forcing a form submit, which could
+  // scan the item twice.
+  function pressEnter(el) {
+    const init = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
+    for (const type of ['keydown', 'keypress', 'keyup']) el.dispatchEvent(new KeyboardEvent(type, init));
+  }
+
+  // ── Fill (panel → page) ────────────────────────────────────────────────────
+
+  function fill({ hints, label }, value, sendResponse) {
+    const el = findInput(hints) ?? inputAfterLabel(label);
+    if (!el) {
+      sendResponse({ ok: false, reason: 'no-field' });
+      return;
+    }
+    // The box exists but the page has locked it — usually already filled in.
+    if (!isUsable(el)) {
+      sendResponse({ ok: false, reason: 'locked', current: el.value?.trim() || null });
+      return;
+    }
+    el.focus();
+    setNativeValue(el, value);
+    pressEnter(el);
+
+    // On a successful scan Myntra clears the box. If the text is still sitting
+    // there, say so instead of pretending it worked.
+    setTimeout(() => {
+      sendResponse({ ok: true, submitted: !(el.isConnected && el.value === value) });
+    }, SUBMIT_CHECK_MS);
+  }
+
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === 'DIAG') {
+      console.log('[picklist]', ...msg.parts);
+      return false;
+    }
+    const target = TARGETS[msg?.type];
+    if (!target) return false;
+    fill(target, msg.value, sendResponse);
+    return true; // async reply
+  });
+
+  // ── Autosave state relay ───────────────────────────────────────────────────
+
+  // The page world cannot read chrome.storage, so push the autosave state in —
+  // now, and again whenever it is toggled.
+  const pushAutosaveState = (on) =>
+    window.postMessage({ __myntraPicklistPanel: true, type: 'AUTOSAVE_STATE', on: on === true }, window.location.origin);
+
+  const announceAutosave = () => chrome.storage.local.get('autosave').then((s) => pushAutosaveState(s.autosave)).catch(() => {});
+  announceAutosave();
+
+  // ── Auto-Pack / Auto-Next state ────────────────────────────────────────────
+
+  const localState = { autopack: false, autonext: false, lastActionTime: 0, clickHistory: {}, nextDebounce: false };
+
+  chrome.storage.local.get(['autopack', 'autonext']).then((s) => {
+    localState.autopack = s.autopack === true;
+    localState.autonext = s.autonext === true;
+  }).catch(() => {});
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local') {
+      if (changes.autosave) pushAutosaveState(changes.autosave.newValue);
+      if (changes.autopack) localState.autopack = changes.autopack.newValue === true;
+      if (changes.autonext) localState.autonext = changes.autonext.newValue === true;
+    }
+  });
+
+  // ── Auto-Pack / Auto-Next helpers ──────────────────────────────────────────
+
+  function isReallyUsable(el) {
+    if (!isUsable(el)) return false;
+    if (el.getAttribute('aria-disabled') === 'true') return false;
+    if (el.classList.contains('disabled') || el.classList.contains('Mui-disabled')) return false;
+    return true;
+  }
+
+  function findButtonByText(regex) {
+    return [...document.querySelectorAll('button')].find(
+      (b) => regex.test(b.textContent.trim()) && isReallyUsable(b),
+    );
+  }
+
+  // Click a button at most once every 3 seconds (prevents infinite click loops
+  // when the user manually closes a modal that automation just opened).
+  function safeClick(btn, name) {
+    const now = Date.now();
+    if (localState.clickHistory[name] && now - localState.clickHistory[name] < 3000) {
+      return false;
+    }
+    btn.click();
+    localState.clickHistory[name] = now;
+    localState.lastActionTime = now;
+    return true;
+  }
+
+  // Smart input finder: checks the input's own attributes first, then walks up
+  // the DOM looking at surrounding text (catches Myntra's generic "Scan Here"
+  // placeholders). Explicitly skips the main SKU / Picklist inputs so we never
+  // confuse them with a modal.
+  function findSmartInput(keywords) {
+    const inputs = [...document.querySelectorAll('input')].filter(isUsable);
+
+    for (const el of inputs) {
+      const text = [el.placeholder, el.getAttribute('aria-label'), el.name, el.id].join(' ').toLowerCase();
+
+      // Skip the main page inputs
+      if (text.includes('product') || text.includes('sku') || text.includes('picklist') || text.includes('seller')) continue;
+
+      // 1. Direct match on the input itself
+      if (keywords.some((k) => text.includes(k))) return el;
+
+      // 2. Contextual match — walk up to 5 parent wrappers
+      let container = el.parentElement;
+      for (let i = 0; i < 5; i++) {
+        if (!container || container === document.body) break;
+        const containerText = container.innerText?.toLowerCase() || '';
+        if (keywords.some((k) => containerText.includes(k))) return el;
+        container = container.parentElement;
+      }
+    }
     return null;
   }
 
@@ -218,89 +202,55 @@ if (!window.__myntraPicklistPanel) {
   function getPacketInput() {
     return findSmartInput(['cover', 'packet', 'awb', 'bag']);
   }
-  chrome.storage.local.get(['autopack', 'autonext']).then(s => {
-    localState.autopack = s.autopack === true;
-    localState.autonext = s.autonext === true;
-  }).catch(() => {});
-  
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local') {
-      if (changes.autosave) pushAutosaveState(changes.autosave.newValue);
-      if (changes.autopack) localState.autopack = changes.autopack.newValue === true;
-      if (changes.autonext) localState.autonext = changes.autonext.newValue === true;
-    }
-  });
 
-  // Watcher for Auto-Pack and Auto-Next
-  function isReallyUsable(el) {
-    if (!isUsable(el)) return false;
-    if (el.getAttribute('aria-disabled') === 'true') return false;
-    if (el.classList.contains('disabled') || el.classList.contains('Mui-disabled')) return false;
-    return true;
-  }
-
-  function findButtonByText(regex) {
-    return [...document.querySelectorAll('button')].find(
-      b => regex.test(b.textContent.trim()) && isReallyUsable(b)
-    );
-  }
+  // ── The automation loop (200 ms) ───────────────────────────────────────────
 
   setInterval(() => {
     // Cooldown: enforce a 600ms gap between any automated clicks
     if (Date.now() - localState.lastActionTime < 600) return;
 
+    // Auto-Next: click "Scan Next" and request the next SKU from the panel
     if (localState.autonext) {
       const nextBtn = findButtonByText(/^SCAN NEXT( ITEM| PICKLIST)?$/i) || findButtonByText(/^NEXT$/i);
       if (nextBtn && !localState.nextDebounce) {
         localState.nextDebounce = true;
         localState.lastActionTime = Date.now();
-        localState.clickHistory = {}; // Clear click history for the new item!
+        localState.clickHistory = {}; // fresh item — allow all clicks again
         nextBtn.click();
         chrome.runtime.sendMessage({ type: 'REQUEST_NEXT_SKU' }).catch(() => {});
         setTimeout(() => { localState.nextDebounce = false; }, 2000);
-        return; // STOP!
+        return;
       }
     }
 
     if (localState.autopack) {
-      // PRIORITY 1: Cover ID Modal (Highest priority, end of packing)
-      // If the Cover ID modal is open, focus it and STOP. Do not click buttons behind it!
+      // PRIORITY 1: Cover ID modal — focus and HALT (never click behind it)
       const packetInput = getPacketInput();
       if (packetInput && isUsable(packetInput)) {
-        if (document.activeElement !== packetInput) {
-          packetInput.focus();
-        }
-        return; // HALT automation while waiting for bag scan
+        if (document.activeElement !== packetInput) packetInput.focus();
+        return;
       }
 
-      // PRIORITY 2: Tag Modal
-      // If the Tag modal is open, focus it and STOP.
+      // PRIORITY 2: Tag modal — focus and HALT
       const tagInput = getTagInput();
       const skipBtn = findButtonByText(/^SKIP$/i);
       if ((tagInput && isUsable(tagInput)) || skipBtn) {
-        if (tagInput && isUsable(tagInput) && document.activeElement !== tagInput) {
-          tagInput.focus();
-        }
-        return; // HALT automation while waiting for tag scan
+        if (tagInput && isUsable(tagInput) && document.activeElement !== tagInput) tagInput.focus();
+        return;
       }
 
-      // PRIORITY 3: PASS Button
+      // PRIORITY 3: PASS button
       const passBtn = findButtonByText(/^PASS$/i);
-      if (passBtn) {
-        if (safeClick(passBtn, 'PASS')) return; // HALT until React processes
-      }
+      if (passBtn) { if (safeClick(passBtn, 'PASS')) return; }
 
-      // PRIORITY 4: PACK Button
+      // PRIORITY 4: PACK button
       const packBtn = findButtonByText(/^PACK$/i);
-      if (packBtn) {
-        if (safeClick(packBtn, 'PACK')) return; // HALT until React processes
-      }
+      if (packBtn) { if (safeClick(packBtn, 'PACK')) return; }
     }
   }, 200);
 
+  // ── Relay inject.js messages to the service worker ─────────────────────────
 
-  // inject.js runs in the page's own world and reports the label and invoice
-  // URLs it sees. Relay them to the service worker, which does the saving.
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     const msg = event.data;
@@ -334,6 +284,8 @@ if (!window.__myntraPicklistPanel) {
       })
       .catch(() => {});
   });
+
+  // ── Watch for picklist ID changes ──────────────────────────────────────────
 
   // An input's value changes without any DOM mutation, so polling is the honest
   // way to watch it. Once a second costs nothing.
