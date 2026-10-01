@@ -108,7 +108,23 @@ if (!window.__myntraPicklistPanel) {
   const announceAutosave = () => chrome.storage.local.get('autosave').then((s) => pushAutosaveState(s.autosave)).catch(() => {});
   announceAutosave();
 
-  let localState = { autopack: false, autonext: false };
+  let localState = { autopack: false, autonext: false, lastActionTime: 0 };
+
+  // Robust input finder that checks both hints and nearby labels
+  function getTagInput() {
+    return findInput([/tag/i, /security/i]) || 
+           inputAfterLabel('scan security tag') || 
+           inputAfterLabel('security tag') || 
+           inputAfterLabel('tag');
+  }
+
+  function getPacketInput() {
+    return findInput([/cover/i, /packet/i, /awb/i]) || 
+           inputAfterLabel('scan cover id') || 
+           inputAfterLabel('scan packet id') || 
+           inputAfterLabel('packet') || 
+           inputAfterLabel('cover');
+  }
   chrome.storage.local.get(['autopack', 'autonext']).then(s => {
     localState.autopack = s.autopack === true;
     localState.autonext = s.autonext === true;
@@ -137,45 +153,56 @@ if (!window.__myntraPicklistPanel) {
   }
 
   setInterval(() => {
+    // Cooldown: enforce a 600ms gap between any automated clicks
+    if (Date.now() - localState.lastActionTime < 600) return;
+
     if (localState.autopack) {
-      const tagHints = [/tag/i, /security/i];
-      const tagInput = findInput(tagHints);
+      const tagInput = getTagInput();
       const skipBtn = findButtonByText(/^SKIP$/i);
       
-      // Phase 1: If the Tag Input (or the SKIP button) is visible, we are on the Tag step!
-      // FOCUS IT and STOP. Do not click PASS/PACK yet!
+      // Phase 1: Tag Step
       if ((tagInput && isUsable(tagInput)) || skipBtn) {
         if (tagInput && isUsable(tagInput) && document.activeElement !== tagInput) {
-          tagInput.focus();
+          tagInput.focus(); // Force focus continuously if Myntra steals it
         }
-        return; // Halt automation until tag is scanned or user manually skips.
+        return; // Halt until tag is handled
       }
 
-      // Phase 2: Tag is scanned/skipped. Now safe to click PASS.
+      // Phase 2: PASS
       const passBtn = findButtonByText(/^PASS$/i);
       if (passBtn) {
         passBtn.click();
-        return; // Halt until React processes PASS.
+        localState.lastActionTime = Date.now();
+        return; 
       }
 
-      // Phase 3: PASS is done. Now safe to click PACK.
+      // Phase 3: PACK
       const packBtn = findButtonByText(/^PACK$/i);
       if (packBtn) {
         packBtn.click();
+        localState.lastActionTime = Date.now();
+        return;
+      }
+
+      // Phase 4: Scan Cover ID / Packet
+      const packetInput = getPacketInput();
+      if (packetInput && isUsable(packetInput) && document.activeElement !== packetInput) {
+        packetInput.focus();
       }
     }
 
     if (localState.autonext) {
-      // 4. Auto-click Scan Next and Auto-Fill Next SKU
+      // Phase 5: Auto-Next
       const nextBtn = findButtonByText(/^SCAN NEXT( ITEM| PICKLIST)?$/i) || findButtonByText(/^NEXT$/i);
       if (nextBtn && !localState.nextDebounce) {
         localState.nextDebounce = true;
+        localState.lastActionTime = Date.now();
         nextBtn.click();
         chrome.runtime.sendMessage({ type: 'REQUEST_NEXT_SKU' }).catch(() => {});
         setTimeout(() => { localState.nextDebounce = false; }, 2000);
       }
     }
-  }, 500);
+  }, 200);
 
 
   // inject.js runs in the page's own world and reports the label and invoice
