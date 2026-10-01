@@ -94,9 +94,20 @@ if (!window.__myntraPicklistPanel) {
   const announceAutosave = () => chrome.storage.local.get('autosave').then((s) => pushAutosaveState(s.autosave)).catch(() => {});
   announceAutosave();
 
-  let localState = { autopack: false, autonext: false, lastActionTime: 0 };
+  let localState = { autopack: false, autonext: false, lastActionTime: 0, clickHistory: {} };
 
   // Robust input finder that checks both hints and nearby labels
+  function safeClick(btn, name) {
+    const now = Date.now();
+    if (localState.clickHistory[name] && now - localState.clickHistory[name] < 3000) {
+      return false; // Prevent infinite click loops if user manually closes a modal
+    }
+    btn.click();
+    localState.clickHistory[name] = now;
+    localState.lastActionTime = now;
+    return true;
+  }
+
   // Bulletproof input finder that looks at the input's own attributes AND the text right above it.
   // This solves Myntra using generic placeholders like "Scan Here" instead of "Scan Cover Id".
   function findSmartInput(keywords) {
@@ -130,11 +141,11 @@ if (!window.__myntraPicklistPanel) {
   }
 
   function getTagInput() {
-    return findSmartInput(['tag', 'security']);
+    return findSmartInput(['tag', 'security', 'brand']);
   }
 
   function getPacketInput() {
-    return findSmartInput(['cover', 'packet', 'awb']);
+    return findSmartInput(['cover', 'packet', 'awb', 'bag']);
   }
   chrome.storage.local.get(['autopack', 'autonext']).then(s => {
     localState.autopack = s.autopack === true;
@@ -167,50 +178,51 @@ if (!window.__myntraPicklistPanel) {
     // Cooldown: enforce a 600ms gap between any automated clicks
     if (Date.now() - localState.lastActionTime < 600) return;
 
-    if (localState.autopack) {
-      const tagInput = getTagInput();
-      const skipBtn = findButtonByText(/^SKIP$/i);
-      
-      // Phase 1: Tag Step
-      if ((tagInput && isUsable(tagInput)) || skipBtn) {
-        if (tagInput && isUsable(tagInput) && document.activeElement !== tagInput) {
-          tagInput.focus(); // Force focus continuously if Myntra steals it
-        }
-        return; // Halt until tag is handled
-      }
-
-      // Phase 2: PASS
-      const passBtn = findButtonByText(/^PASS$/i);
-      if (passBtn) {
-        passBtn.click();
-        localState.lastActionTime = Date.now();
-        return; 
-      }
-
-      // Phase 3: PACK
-      const packBtn = findButtonByText(/^PACK$/i);
-      if (packBtn) {
-        packBtn.click();
-        localState.lastActionTime = Date.now();
-        return;
-      }
-
-      // Phase 4: Scan Cover ID / Packet
-      const packetInput = getPacketInput();
-      if (packetInput && isUsable(packetInput) && document.activeElement !== packetInput) {
-        packetInput.focus();
-      }
-    }
-
     if (localState.autonext) {
-      // Phase 5: Auto-Next
       const nextBtn = findButtonByText(/^SCAN NEXT( ITEM| PICKLIST)?$/i) || findButtonByText(/^NEXT$/i);
       if (nextBtn && !localState.nextDebounce) {
         localState.nextDebounce = true;
         localState.lastActionTime = Date.now();
+        localState.clickHistory = {}; // Clear click history for the new item!
         nextBtn.click();
         chrome.runtime.sendMessage({ type: 'REQUEST_NEXT_SKU' }).catch(() => {});
         setTimeout(() => { localState.nextDebounce = false; }, 2000);
+        return; // STOP!
+      }
+    }
+
+    if (localState.autopack) {
+      // PRIORITY 1: Cover ID Modal (Highest priority, end of packing)
+      // If the Cover ID modal is open, focus it and STOP. Do not click buttons behind it!
+      const packetInput = getPacketInput();
+      if (packetInput && isUsable(packetInput)) {
+        if (document.activeElement !== packetInput) {
+          packetInput.focus();
+        }
+        return; // HALT automation while waiting for bag scan
+      }
+
+      // PRIORITY 2: Tag Modal
+      // If the Tag modal is open, focus it and STOP.
+      const tagInput = getTagInput();
+      const skipBtn = findButtonByText(/^SKIP$/i);
+      if ((tagInput && isUsable(tagInput)) || skipBtn) {
+        if (tagInput && isUsable(tagInput) && document.activeElement !== tagInput) {
+          tagInput.focus();
+        }
+        return; // HALT automation while waiting for tag scan
+      }
+
+      // PRIORITY 3: PASS Button
+      const passBtn = findButtonByText(/^PASS$/i);
+      if (passBtn) {
+        if (safeClick(passBtn, 'PASS')) return; // HALT until React processes
+      }
+
+      // PRIORITY 4: PACK Button
+      const packBtn = findButtonByText(/^PACK$/i);
+      if (packBtn) {
+        if (safeClick(packBtn, 'PACK')) return; // HALT until React processes
       }
     }
   }, 200);
