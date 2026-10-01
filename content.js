@@ -108,33 +108,104 @@ if (!window.__myntraPicklistPanel) {
     return true;
   }
 
+
+
+  // If Myntra ever drops the placeholder, fall back to the first usable input
+  // after the matching heading.
+  function setNativeValue(el, value) {
+    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    if (setter) setter.call(el, value);
+    else el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // A hardware scanner submits by typing Enter, so the page already handles these
+  // events. We send the same ones rather than forcing a form submit, which could
+  // scan the item twice.
+  function pressEnter(el) {
+    const init = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
+    for (const type of ['keydown', 'keypress', 'keyup']) el.dispatchEvent(new KeyboardEvent(type, init));
+  }
+
+  function fill({ hints, label }, value, sendResponse) {
+    const el = findInput(hints) ?? inputAfterLabel(label);
+    if (!el) {
+      sendResponse({ ok: false, reason: 'no-field' });
+      return;
+    }
+    // The box exists but the page has locked it — usually already filled in.
+    if (!isUsable(el)) {
+      sendResponse({ ok: false, reason: 'locked', current: el.value?.trim() || null });
+      return;
+    }
+    el.focus();
+    setNativeValue(el, value);
+    pressEnter(el);
+
+    // On a successful scan Myntra clears the box. If the text is still sitting
+    // there, say so instead of pretending it worked.
+    setTimeout(() => {
+      sendResponse({ ok: true, submitted: !(el.isConnected && el.value === value) });
+    }, SUBMIT_CHECK_MS);
+  }
+
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === 'DIAG') {
+      console.log('[picklist]', ...msg.parts);
+      return false;
+    }
+    const target = TARGETS[msg?.type];
+    if (!target) return false;
+    fill(target, msg.value, sendResponse);
+    return true; // async reply
+  });
+
+  // The page world cannot read chrome.storage, so push the autosave state in —
+  // now, and again whenever it is toggled.
+  const pushAutosaveState = (on) =>
+    window.postMessage({ __myntraPicklistPanel: true, type: 'AUTOSAVE_STATE', on: on === true }, window.location.origin);
+
+  const announceAutosave = () => chrome.storage.local.get('autosave').then((s) => pushAutosaveState(s.autosave)).catch(() => {});
+  announceAutosave();
+
+  let localState = { autopack: false, autonext: false, lastActionTime: 0, clickHistory: {} };
+
+  // Robust input finder that checks both hints and nearby labels
+  function safeClick(btn, name) {
+    const now = Date.now();
+    if (localState.clickHistory[name] && now - localState.clickHistory[name] < 3000) {
+      return false; // Prevent infinite click loops if user manually closes a modal
+    }
+    btn.click();
+    localState.clickHistory[name] = now;
+    localState.lastActionTime = now;
+    return true;
+  }
+
   // Bulletproof input finder that looks at the input's own attributes AND the text right above it.
-  // This solves Myntra using generic placeholders like "Scan Here" instead of "Scan Cover Id".
   function findSmartInput(keywords) {
     const inputs = [...document.querySelectorAll('input')].filter(isUsable);
     
-    // 1. Try exact matches on the input itself (placeholder, aria-label)
     for (const el of inputs) {
       const text = [el.placeholder, el.getAttribute('aria-label'), el.name, el.id].join(' ').toLowerCase();
+      
+      // EXCLUDE the main page inputs so we never accidentally mistake them for a Popup Modal
+      if (text.includes('product') || text.includes('sku') || text.includes('picklist')) continue;
+      
+      // 1. Try exact matches on the input itself
       if (keywords.some(k => text.includes(k))) return el;
-    }
-    
-    // 2. Try contextual matches (look at the text of the surrounding div to catch the label)
-    for (const el of inputs) {
+      
+      // 2. Try contextual matches (look at the text of the surrounding div to catch the label)
       let container = el.parentElement;
-      for (let i = 0; i < 4; i++) { // Walk up 4 levels of wrappers
+      for (let i = 0; i < 5; i++) { // Walk up 5 levels of wrappers
          if (!container || container === document.body) break;
+         // Only look at direct text, not the entire page
          const containerText = container.innerText?.toLowerCase() || '';
          if (keywords.some(k => containerText.includes(k))) return el;
          container = container.parentElement;
       }
-    }
-    
-    // 3. Final fallback: if there is only ONE usable "Scan" input, and the page mentions the keyword.
-    const scanInputs = inputs.filter(el => /scan/i.test(el.placeholder || ''));
-    if (scanInputs.length === 1) {
-       const bodyText = document.body.innerText.toLowerCase();
-       if (keywords.some(k => bodyText.includes(k))) return scanInputs[0];
     }
     
     return null;
