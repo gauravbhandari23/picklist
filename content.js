@@ -36,30 +36,6 @@ if (!window.__myntraPicklistPanel) {
 
   // If Myntra ever drops the placeholder, fall back to the first usable input
   // after the matching heading.
-  function inputAfterLabel(text) {
-    // Ultra-fast C++ TreeWalker instead of querySelectorAll('*') to prevent CPU lag
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
-    let labelNode = null;
-    let node;
-    while ((node = walker.nextNode())) {
-      if (node.nodeValue.trim().toLowerCase() === text) {
-        labelNode = node.parentNode;
-        break;
-      }
-    }
-    if (!labelNode) return null;
-
-    const inputs = document.querySelectorAll('input');
-    for (let i = 0; i < inputs.length; i++) {
-      if (isUsable(inputs[i]) && (labelNode.compareDocumentPosition(inputs[i]) & Node.DOCUMENT_POSITION_FOLLOWING)) {
-        return inputs[i];
-      }
-    }
-    return null;
-  }
-
-  // React keeps its own copy of the value, so a plain `el.value = x` is ignored.
-  // Going through the prototype setter makes React see a real change.
   function setNativeValue(el, value) {
     const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
@@ -121,27 +97,44 @@ if (!window.__myntraPicklistPanel) {
   let localState = { autopack: false, autonext: false, lastActionTime: 0 };
 
   // Robust input finder that checks both hints and nearby labels
-  // Short-circuit logic: run fast queries first, only run fallbacks if needed.
+  // Bulletproof input finder that looks at the input's own attributes AND the text right above it.
+  // This solves Myntra using generic placeholders like "Scan Here" instead of "Scan Cover Id".
+  function findSmartInput(keywords) {
+    const inputs = [...document.querySelectorAll('input')].filter(isUsable);
+    
+    // 1. Try exact matches on the input itself (placeholder, aria-label)
+    for (const el of inputs) {
+      const text = [el.placeholder, el.getAttribute('aria-label'), el.name, el.id].join(' ').toLowerCase();
+      if (keywords.some(k => text.includes(k))) return el;
+    }
+    
+    // 2. Try contextual matches (look at the text of the surrounding div to catch the label)
+    for (const el of inputs) {
+      let container = el.parentElement;
+      for (let i = 0; i < 4; i++) { // Walk up 4 levels of wrappers
+         if (!container || container === document.body) break;
+         const containerText = container.innerText?.toLowerCase() || '';
+         if (keywords.some(k => containerText.includes(k))) return el;
+         container = container.parentElement;
+      }
+    }
+    
+    // 3. Final fallback: if there is only ONE usable "Scan" input, and the page mentions the keyword.
+    const scanInputs = inputs.filter(el => /scan/i.test(el.placeholder || ''));
+    if (scanInputs.length === 1) {
+       const bodyText = document.body.innerText.toLowerCase();
+       if (keywords.some(k => bodyText.includes(k))) return scanInputs[0];
+    }
+    
+    return null;
+  }
+
   function getTagInput() {
-    let input = findInput([/tag/i, /security/i]);
-    if (input) return input;
-    input = inputAfterLabel('scan security tag');
-    if (input) return input;
-    input = inputAfterLabel('security tag');
-    if (input) return input;
-    return inputAfterLabel('tag');
+    return findSmartInput(['tag', 'security']);
   }
 
   function getPacketInput() {
-    let input = findInput([/cover/i, /packet/i, /awb/i]);
-    if (input) return input;
-    input = inputAfterLabel('scan cover id');
-    if (input) return input;
-    input = inputAfterLabel('scan packet id');
-    if (input) return input;
-    input = inputAfterLabel('packet');
-    if (input) return input;
-    return inputAfterLabel('cover');
+    return findSmartInput(['cover', 'packet', 'awb']);
   }
   chrome.storage.local.get(['autopack', 'autonext']).then(s => {
     localState.autopack = s.autopack === true;
