@@ -37,15 +37,25 @@ if (!window.__myntraPicklistPanel) {
   // If Myntra ever drops the placeholder, fall back to the first usable input
   // after the matching heading.
   function inputAfterLabel(text) {
-    const label = [...document.querySelectorAll('*')].find(
-      (el) => el.children.length === 0 && el.textContent.trim().toLowerCase() === text,
-    );
-    if (!label) return null;
-    return (
-      [...document.querySelectorAll('input')]
-        .filter(isUsable)
-        .find((el) => label.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) ?? null
-    );
+    // Ultra-fast C++ TreeWalker instead of querySelectorAll('*') to prevent CPU lag
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+    let labelNode = null;
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.nodeValue.trim().toLowerCase() === text) {
+        labelNode = node.parentNode;
+        break;
+      }
+    }
+    if (!labelNode) return null;
+
+    const inputs = document.querySelectorAll('input');
+    for (let i = 0; i < inputs.length; i++) {
+      if (isUsable(inputs[i]) && (labelNode.compareDocumentPosition(inputs[i]) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+        return inputs[i];
+      }
+    }
+    return null;
   }
 
   // React keeps its own copy of the value, so a plain `el.value = x` is ignored.
@@ -111,19 +121,27 @@ if (!window.__myntraPicklistPanel) {
   let localState = { autopack: false, autonext: false, lastActionTime: 0 };
 
   // Robust input finder that checks both hints and nearby labels
+  // Short-circuit logic: run fast queries first, only run fallbacks if needed.
   function getTagInput() {
-    return findInput([/tag/i, /security/i]) || 
-           inputAfterLabel('scan security tag') || 
-           inputAfterLabel('security tag') || 
-           inputAfterLabel('tag');
+    let input = findInput([/tag/i, /security/i]);
+    if (input) return input;
+    input = inputAfterLabel('scan security tag');
+    if (input) return input;
+    input = inputAfterLabel('security tag');
+    if (input) return input;
+    return inputAfterLabel('tag');
   }
 
   function getPacketInput() {
-    return findInput([/cover/i, /packet/i, /awb/i]) || 
-           inputAfterLabel('scan cover id') || 
-           inputAfterLabel('scan packet id') || 
-           inputAfterLabel('packet') || 
-           inputAfterLabel('cover');
+    let input = findInput([/cover/i, /packet/i, /awb/i]);
+    if (input) return input;
+    input = inputAfterLabel('scan cover id');
+    if (input) return input;
+    input = inputAfterLabel('scan packet id');
+    if (input) return input;
+    input = inputAfterLabel('packet');
+    if (input) return input;
+    return inputAfterLabel('cover');
   }
   chrome.storage.local.get(['autopack', 'autonext']).then(s => {
     localState.autopack = s.autopack === true;
