@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 const els = {
   subtitle: $('subtitle'), picklistId: $('picklistId'), doneCount: $('doneCount'), totalCount: $('totalCount'),
   close: $('close'), pick: $('pick'), reset: $('reset'), clear: $('clear'),
-  fillMode: $('fillMode'), autosave: $('autosave'), pageSize: $('pageSize'),
+  fillMode: $('fillMode'), autosave: $('autosave'), autopack: $('autopack'), autonext: $('autonext'), pageSize: $('pageSize'),
   status: $('status'), warnings: $('warnings'), drop: $('drop'), rows: $('rows'), file: $('file'),
 };
 
@@ -424,6 +424,16 @@ els.autosave.addEventListener('change', () => {
   );
 });
 
+els.autopack.addEventListener('change', () => {
+  chrome.storage.local.set({ autopack: els.autopack.checked });
+  status(els.autopack.checked ? 'Auto-Pack on — will auto-click PASS and PACK.' : 'Auto-Pack off.');
+});
+
+els.autonext.addEventListener('change', () => {
+  chrome.storage.local.set({ autonext: els.autonext.checked });
+  status(els.autonext.checked ? 'Auto-Next on — will click Scan Next and fill next SKU automatically.' : 'Auto-Next off.');
+});
+
 for (const type of ['dragenter', 'dragover']) {
   document.addEventListener(type, (e) => {
     e.preventDefault();
@@ -448,6 +458,15 @@ const AUTOSAVE_PROBLEMS = {
 };
 
 chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type === 'REQUEST_NEXT_SKU') {
+    if (els.autonext.checked && state.rows.length > 0) {
+      const idx = nextIndex();
+      if (idx !== -1) {
+        fillRow(idx);
+      }
+    }
+    return;
+  }
   if (msg?.type === 'PAGE_PICKLIST_ID') {
     state.pagePicklistId = msg.value;
     save();
@@ -468,8 +487,10 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
 });
 
-const stored = await chrome.storage.local.get(['picklist', 'autosave', 'pageSize']);
+const stored = await chrome.storage.local.get(['picklist', 'autosave', 'autopack', 'autonext', 'pageSize']);
 els.autosave.checked = stored.autosave === true;
+els.autopack.checked = stored.autopack === true;
+els.autonext.checked = stored.autonext === true;
 els.pageSize.value = stored.pageSize ?? 'letter';
 state = { ...EMPTY, ...(stored.picklist ?? {}) };
 // Older saved state kept a line per SKU with a quantity; split it into units.

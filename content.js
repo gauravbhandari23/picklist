@@ -107,9 +107,58 @@ if (!window.__myntraPicklistPanel) {
 
   const announceAutosave = () => chrome.storage.local.get('autosave').then((s) => pushAutosaveState(s.autosave)).catch(() => {});
   announceAutosave();
+
+  let localState = { autopack: false, autonext: false };
+  chrome.storage.local.get(['autopack', 'autonext']).then(s => {
+    localState.autopack = s.autopack === true;
+    localState.autonext = s.autonext === true;
+  }).catch(() => {});
+  
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.autosave) pushAutosaveState(changes.autosave.newValue);
+    if (area === 'local') {
+      if (changes.autosave) pushAutosaveState(changes.autosave.newValue);
+      if (changes.autopack) localState.autopack = changes.autopack.newValue === true;
+      if (changes.autonext) localState.autonext = changes.autonext.newValue === true;
+    }
   });
+
+  // Watcher for Auto-Pack and Auto-Next
+  function findButtonByText(regex) {
+    return [...document.querySelectorAll('button')].find(
+      b => regex.test(b.textContent.trim()) && isUsable(b)
+    );
+  }
+
+  setInterval(() => {
+    if (localState.autopack) {
+      // 1. Auto-focus Tag Input
+      const tagHints = [/scan\s*security\s*tag/i, /security\s*tag/i];
+      const tagInput = findInput(tagHints);
+      if (tagInput && document.activeElement !== tagInput && !tagInput.value) {
+        tagInput.focus();
+      }
+
+      // 2. Auto-click PASS
+      const passBtn = findButtonByText(/^PASS$/i);
+      if (passBtn) passBtn.click();
+
+      // 3. Auto-click PACK
+      const packBtn = findButtonByText(/^PACK$/i);
+      if (packBtn) packBtn.click();
+    }
+
+    if (localState.autonext) {
+      // 4. Auto-click Scan Next and Auto-Fill Next SKU
+      const nextBtn = findButtonByText(/^SCAN NEXT( ITEM| PICKLIST)?$/i) || findButtonByText(/^NEXT$/i);
+      if (nextBtn && !localState.nextDebounce) {
+        localState.nextDebounce = true;
+        nextBtn.click();
+        chrome.runtime.sendMessage({ type: 'REQUEST_NEXT_SKU' }).catch(() => {});
+        setTimeout(() => { localState.nextDebounce = false; }, 2000);
+      }
+    }
+  }, 500);
+
 
   // inject.js runs in the page's own world and reports the label and invoice
   // URLs it sees. Relay them to the service worker, which does the saving.
