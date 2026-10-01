@@ -138,13 +138,14 @@ if (!window.__myntraPicklistPanel) {
 
   setInterval(() => {
     if (localState.autopack) {
-      const tagHints = [/scan\s*security\s*tag/i, /security\s*tag/i];
+      const tagHints = [/tag/i, /security/i];
       const tagInput = findInput(tagHints);
+      const skipBtn = findButtonByText(/^SKIP$/i);
       
-      // Phase 1: If the Tag Input is waiting for a scan, FOCUS IT and STOP. 
-      // Do not click PASS/PACK yet!
-      if (tagInput && isUsable(tagInput) && !tagInput.value) {
-        if (document.activeElement !== tagInput) {
+      // Phase 1: If the Tag Input (or the SKIP button) is visible, we are on the Tag step!
+      // FOCUS IT and STOP. Do not click PASS/PACK yet!
+      if ((tagInput && isUsable(tagInput)) || skipBtn) {
+        if (tagInput && isUsable(tagInput) && document.activeElement !== tagInput) {
           tagInput.focus();
         }
         return; // Halt automation until tag is scanned or user manually skips.
