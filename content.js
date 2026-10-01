@@ -123,28 +123,45 @@ if (!window.__myntraPicklistPanel) {
   });
 
   // Watcher for Auto-Pack and Auto-Next
+  function isReallyUsable(el) {
+    if (!isUsable(el)) return false;
+    if (el.getAttribute('aria-disabled') === 'true') return false;
+    if (el.classList.contains('disabled') || el.classList.contains('Mui-disabled')) return false;
+    return true;
+  }
+
   function findButtonByText(regex) {
     return [...document.querySelectorAll('button')].find(
-      b => regex.test(b.textContent.trim()) && isUsable(b)
+      b => regex.test(b.textContent.trim()) && isReallyUsable(b)
     );
   }
 
   setInterval(() => {
     if (localState.autopack) {
-      // 1. Auto-focus Tag Input
       const tagHints = [/scan\s*security\s*tag/i, /security\s*tag/i];
       const tagInput = findInput(tagHints);
-      if (tagInput && document.activeElement !== tagInput && !tagInput.value) {
-        tagInput.focus();
+      
+      // Phase 1: If the Tag Input is waiting for a scan, FOCUS IT and STOP. 
+      // Do not click PASS/PACK yet!
+      if (tagInput && isUsable(tagInput) && !tagInput.value) {
+        if (document.activeElement !== tagInput) {
+          tagInput.focus();
+        }
+        return; // Halt automation until tag is scanned or user manually skips.
       }
 
-      // 2. Auto-click PASS
+      // Phase 2: Tag is scanned/skipped. Now safe to click PASS.
       const passBtn = findButtonByText(/^PASS$/i);
-      if (passBtn) passBtn.click();
+      if (passBtn) {
+        passBtn.click();
+        return; // Halt until React processes PASS.
+      }
 
-      // 3. Auto-click PACK
+      // Phase 3: PASS is done. Now safe to click PACK.
       const packBtn = findButtonByText(/^PACK$/i);
-      if (packBtn) packBtn.click();
+      if (packBtn) {
+        packBtn.click();
+      }
     }
 
     if (localState.autonext) {
