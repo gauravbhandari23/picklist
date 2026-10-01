@@ -182,12 +182,21 @@ if (!window.__myntraPicklistPanel) {
 
       // 1. Direct match on the input itself
       if (keywords.some((k) => text.includes(k))) return el;
+      
+      // 2. Direct match via Myntra's ARIA label binding (Highly accurate)
+      const labelId = el.getAttribute('aria-labelledby');
+      if (labelId) {
+         const labelEl = document.getElementById(labelId);
+         const labelText = labelEl?.textContent?.toLowerCase() || '';
+         if (keywords.some((k) => labelText.includes(k))) return el;
+      }
 
-      // 2. Contextual match — walk up to 5 parent wrappers
+      // 3. Contextual match — walk up to 5 parent wrappers.
+      // We use textContent instead of innerText because innerText is empty during CSS fade-in animations!
       let container = el.parentElement;
       for (let i = 0; i < 5; i++) {
         if (!container || container === document.body) break;
-        const containerText = container.innerText?.toLowerCase() || '';
+        const containerText = container.textContent?.toLowerCase() || '';
         if (keywords.some((k) => containerText.includes(k))) return el;
         container = container.parentElement;
       }
@@ -205,14 +214,7 @@ if (!window.__myntraPicklistPanel) {
 
   // Plain .focus() is ignored by Myntra's React — simulate a real mouse click
   // so the framework registers the input as truly active for barcode scanning.
-  function forceActivate(el) {
-    if (document.activeElement === el) return;
-    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-    el.focus();
-    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-  }
-
+  
   // ── The automation loop (200 ms) ───────────────────────────────────────────
 
   setInterval(() => {
@@ -237,7 +239,7 @@ if (!window.__myntraPicklistPanel) {
       // PRIORITY 1: Cover ID modal — activate and HALT (never click behind it)
       const packetInput = getPacketInput();
       if (packetInput && isUsable(packetInput)) {
-        forceActivate(packetInput);
+        if (document.activeElement !== packetInput) packetInput.focus();
         return;
       }
 
@@ -245,7 +247,7 @@ if (!window.__myntraPicklistPanel) {
       const tagInput = getTagInput();
       const skipBtn = findButtonByText(/^SKIP$/i);
       if ((tagInput && isUsable(tagInput)) || skipBtn) {
-        if (tagInput && isUsable(tagInput)) forceActivate(tagInput);
+        if (tagInput && isUsable(tagInput)) if (document.activeElement !== tagInput) tagInput.focus();
         return;
       }
 
