@@ -25,14 +25,27 @@ const JOIN = {
 };
 
 function toCells(textItems) {
-  const raw = textItems
-    .map((it) => ({
-      text: typeof it.str === 'string' ? it.str : String(it.text ?? ''),
-      x: it.transform ? it.transform[4] : it.x,
-      y: it.transform ? it.transform[5] : it.y,
-      page: Math.max(1, Math.trunc(it.page ?? 1)),
-    }))
-    .filter((c) => c.text.trim() !== '' && Number.isFinite(c.x) && Number.isFinite(c.y));
+  const raw = [];
+  for (const it of textItems) {
+    let text = typeof it.str === 'string' ? it.str : String(it.text ?? '');
+    text = text.replace(/[\u200B-\u200D\uFEFF]/g, ''); // Remove zero-width chars
+    const x = it.transform ? it.transform[4] : it.x;
+    const y = it.transform ? it.transform[5] : it.y;
+    const page = Math.max(1, Math.trunc(it.page ?? 1));
+
+    if (text.trim() === '' || !Number.isFinite(x) || !Number.isFinite(y)) continue;
+
+    // Sometimes pdf.js glues the Myntra SKU and Seller SKU into a single string
+    // if they are too close. Split them so they form separate columns.
+    const parts = text.trim().split(/\s+/);
+    if (parts.length > 1 && /^[A-Z]{3,}\d{6,}$/.test(parts[0])) {
+      raw.push({ text: parts[0], x, y, page });
+      raw.push({ text: parts.slice(1).join(' '), x: x + 100, y, page });
+      continue;
+    }
+    
+    raw.push({ text, x, y, page });
+  }
 
   if (!raw.length) return raw;
   // Measured from the document rather than assumed, so an unusual page size
