@@ -242,6 +242,46 @@ if (!window.__myntraPicklistPanel) {
     }
 
     if (localState.autopack) {
+      // PRIORITY 0: Error banners
+      // Handle "Order is packed" (already processed) and "Technical Error" (network retry)
+      const errorBanners = [...document.querySelectorAll('[role="alert"], .MuiAlert-message, .MuiSnackbar-root')];
+      for (const banner of errorBanners) {
+        if (!isVisible(banner)) continue;
+        const text = banner.textContent.toLowerCase();
+        
+        if (text.includes('order is packed') || text.includes('no open orders found') || text.includes('already packed')) {
+           const closeBtn = banner.querySelector('button') || banner.parentElement?.querySelector('button') || banner.parentElement?.parentElement?.querySelector('button');
+           if (closeBtn && isUsable(closeBtn)) closeBtn.click();
+           
+           const clearBtn = document.querySelector('.ClearAll');
+           if (clearBtn) safeClick(clearBtn, 'CLEAR_ALL_ERROR');
+           
+           if (localState.autonext) {
+              chrome.runtime.sendMessage({ type: 'REQUEST_NEXT_SKU' }).catch(() => {});
+              localState.lastActionTime = Date.now();
+           }
+           return;
+        }
+        else if (text.includes('technical error') || text.includes('went wrong') || text.includes('failed') || text.includes('try again') || text.includes('timeout')) {
+           if (Date.now() - (localState.clickHistory['ERROR_RETRY'] || 0) < 1000) return;
+           localState.clickHistory['ERROR_RETRY'] = Date.now();
+           
+           const closeBtn = banner.querySelector('button') || banner.parentElement?.querySelector('button') || banner.parentElement?.parentElement?.querySelector('button');
+           if (closeBtn && isUsable(closeBtn)) closeBtn.click();
+           
+           const tagInput = getTagInput();
+           const packetInput = getPacketInput();
+           if (!tagInput && !packetInput) {
+               const skuInput = findInput(TARGETS.FILL.hints) ?? inputAfterLabel(TARGETS.FILL.label);
+               if (skuInput && isUsable(skuInput) && skuInput.value) {
+                   pressEnter(skuInput);
+               }
+           }
+           localState.lastActionTime = Date.now();
+           return;
+        }
+      }
+
       // PRIORITY 1: Cover ID modal — activate and HALT (never click behind it)
       const packetInput = getPacketInput();
       if (packetInput && isUsable(packetInput)) {
