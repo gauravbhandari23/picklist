@@ -1,7 +1,7 @@
 // Pure picklist-PDF -> rows logic.
 // No DOM and no chrome.* in here, so test/parse.test.mjs can run it under plain Node.
 
-const SKU_RE = /^[A-Z]{3,}\d{6,}$/;
+const SKU_RE = /^[A-Z]{3,}\d{6,}/;
 // Each PDF page restarts its coordinates at the top, so page 2's y values sit
 // ABOVE page 1's. Every page is shifted down by more than one page height, so y
 // decreases continuously in reading order however many pages there are — which
@@ -34,16 +34,6 @@ function toCells(textItems) {
     const page = Math.max(1, Math.trunc(it.page ?? 1));
 
     if (text.trim() === '' || !Number.isFinite(x) || !Number.isFinite(y)) continue;
-
-    // Sometimes pdf.js glues the Myntra SKU and Seller SKU into a single string
-    // if they are too close. Split them so they form separate columns.
-    const parts = text.trim().split(/\s+/);
-    if (parts.length > 1 && /^[A-Z]{3,}\d{6,}$/.test(parts[0])) {
-      raw.push({ text: parts[0], x, y, page });
-      raw.push({ text: parts.slice(1).join(' '), x: x + 100, y, page });
-      continue;
-    }
-    
     raw.push({ text, x, y, page });
   }
 
@@ -176,11 +166,18 @@ export function parsePicklist(textItems) {
 
   const descEnd = qtyCol === -1 ? centres.length : qtyCol;
   const rows = grid.map((row, i) => {
-    const myntraSku = joinColumn(row[0], JOIN.glue) || anchors[i].text.trim();
-    const sellerSku = joinColumn(row[1] ?? [], JOIN.glue);
+    let myntraSku = joinColumn(row[0], JOIN.space) || anchors[i].text.trim();
+    let sellerSku = joinColumn(row[1] ?? [], JOIN.glue);
     const desc = joinColumn(row.slice(2, descEnd).flat(), JOIN.space);
     const qtyRaw = qtyCol === -1 ? '1' : joinColumn(row[qtyCol], JOIN.glue);
     const qty = /^\d+$/.test(qtyRaw) ? parseInt(qtyRaw, 10) : 1;
+
+    // If pdf.js glued the Myntra SKU and Seller SKU together into column 0
+    const skuParts = myntraSku.split(' ');
+    if (skuParts.length > 1) {
+      myntraSku = skuParts[0];
+      sellerSku = sellerSku ? skuParts.slice(1).join('') + sellerSku : skuParts.slice(1).join('');
+    }
 
     if (!sellerSku) warnings.push(`${myntraSku}: no seller SKU found.`);
     if (qtyCol !== -1 && !/^\d+$/.test(qtyRaw)) warnings.push(`${myntraSku}: unreadable quantity "${qtyRaw}", using 1.`);
