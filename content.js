@@ -258,6 +258,15 @@ if (!window.__myntraPicklistPanel) {
       // PRIORITY 4: PACK button
       const packBtn = findButtonByText(/^PACK$/i);
       if (packBtn) { if (safeClick(packBtn, 'PACK')) return; }
+
+      // PRIORITY 5: CLEAR ALL button
+      // In multi-item orders, Myntra locks the SKU box after an item is loaded.
+      // Auto-click CLEAR ALL to unlock it so the user can scan the next item.
+      const clearBtn = document.querySelector('.ClearAll');
+      const skuInput = findInput(TARGETS.FILL.hints) ?? inputAfterLabel(TARGETS.FILL.label);
+      if (clearBtn && skuInput && !isUsable(skuInput)) {
+        if (safeClick(clearBtn, 'CLEAR_ALL')) return;
+      }
     }
   }, 200);
 
