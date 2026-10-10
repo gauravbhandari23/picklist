@@ -235,7 +235,7 @@ if (!window.__myntraPicklistPanel) {
         localState.lastActionTime = Date.now();
         localState.clickHistory = {}; // fresh item — allow all clicks again
         nextBtn.click();
-        chrome.runtime.sendMessage({ type: 'REQUEST_NEXT_SKU' }).catch(() => {});
+        setTimeout(() => { chrome.runtime.sendMessage({ type: 'REQUEST_NEXT_SKU' }).catch(() => {}); }, 600);
         setTimeout(() => { localState.nextDebounce = false; }, 2000);
         return;
       }
@@ -257,7 +257,7 @@ if (!window.__myntraPicklistPanel) {
            if (clearBtn) safeClick(clearBtn, 'CLEAR_ALL_ERROR');
            
            if (localState.autonext) {
-              chrome.runtime.sendMessage({ type: 'REQUEST_NEXT_SKU' }).catch(() => {});
+              setTimeout(() => { chrome.runtime.sendMessage({ type: 'REQUEST_NEXT_SKU' }).catch(() => {}); }, 600);
               localState.lastActionTime = Date.now();
            }
            return;
