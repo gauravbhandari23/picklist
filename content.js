@@ -328,6 +328,10 @@ if (!window.__myntraPicklistPanel) {
       announceAutosave();
       return;
     }
+    if (msg.type === 'GENIE_ERROR') {
+      chrome.runtime.sendMessage({ type: 'GENIE_ERROR', sku: msg.sku }).catch(() => {});
+      return;
+    }
     if (msg.type === 'LATE_START') {
       chrome.runtime.sendMessage({ type: 'LATE_START' }).catch(() => {});
       return;

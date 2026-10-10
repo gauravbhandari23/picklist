@@ -458,6 +458,25 @@ const AUTOSAVE_PROBLEMS = {
 };
 
 chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type === 'GENIE_ERROR') {
+    const sku = msg.sku;
+    const idx = state.rows.findLastIndex(r => (r.sellerSku === sku || r.myntraSku === sku) && isDone(r));
+    if (idx !== -1) {
+      state.rows[idx].done = 0;
+      save();
+      render();
+      status('GENIE error for ' + sku + ' — retrying in 1s...', true);
+      const retry = () => {
+        if (filling) {
+          setTimeout(retry, 1000);
+          return;
+        }
+        fillRow(idx);
+      };
+      setTimeout(retry, 1000);
+    }
+    return;
+  }
   if (msg?.type === 'REQUEST_NEXT_SKU') {
     if (els.autonext.checked && state.rows.length > 0) {
       const idx = nextIndex();

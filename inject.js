@@ -461,7 +461,17 @@
     }
     return out.then((res) => {
       try {
-        if (PACKET_RE.test(url)) {
+        if (url.includes('/api/mdirect/packets/') && url.includes('/items?skuCode=')) {
+          res.clone().text().then(text => {
+            try {
+              const data = JSON.parse(text);
+              if (data?.status?.statusCode === 86 && data?.status?.statusMessage?.includes('GENIE')) {
+                const sku = new URL(url, window.location.href).searchParams.get('skuCode');
+                if (sku) post({ type: 'GENIE_ERROR', sku });
+              }
+            } catch {}
+          }).catch(() => {});
+        } else if (PACKET_RE.test(url)) {
           res.clone().text().then(notePacket).catch(() => {});
         } else if (isLabel) {
           if (!res.ok) {
@@ -546,6 +556,16 @@
         const url = this.__myntraUrl;
         if (!url) return;
         if (LABEL_RE.test(url)) log('xhr ->', url);
+        if (url.includes('/api/mdirect/packets/') && url.includes('/items?skuCode=')) {
+          try {
+            const data = JSON.parse(this.responseText);
+            if (data?.status?.statusCode === 86 && data?.status?.statusMessage?.includes('GENIE')) {
+              const sku = new URL(url, window.location.href).searchParams.get('skuCode');
+              if (sku) post({ type: 'GENIE_ERROR', sku });
+            }
+          } catch {}
+          return;
+        }
         if (PACKET_RE.test(url)) {
           notePacket(this.responseText);
           return;
