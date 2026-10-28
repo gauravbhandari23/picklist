@@ -23,7 +23,7 @@ let state = { ...EMPTY };
 const packed = () => state.rows.reduce((n, r) => n + r.done, 0);
 const units = () => state.rows.reduce((n, r) => n + r.qty, 0);
 const isDone = (r) => r.done >= r.qty;
-const nextIndex = () => state.rows.findIndex((r) => !isDone(r));
+const nextIndex = () => state.rows.findIndex((r) => !isDone(r) && !r.packing);
 
 const save = () => chrome.storage.local.set({ picklist: state });
 
@@ -194,24 +194,48 @@ function scrollToNext() {
 // One fill at a time: a double click used to send the SKU twice — scanned
 // twice on Myntra's side and ticked twice here.
 let filling = false;
-let retryTimer = null;
-const clearRetryTimer = () => {
-  if (retryTimer) {
-    clearTimeout(retryTimer);
-    retryTimer = null;
+const retryTimers = new Map();
+
+function clearRetryTimer(i) {
+  if (i !== undefined) {
+    if (retryTimers.has(i)) {
+      clearTimeout(retryTimers.get(i));
+      retryTimers.delete(i);
+    }
+  } else {
+    for (const timer of retryTimers.values()) clearTimeout(timer);
+    retryTimers.clear();
   }
-};
+}
+
+function scheduleRetry(i, delayMs = 2000) {
+  clearRetryTimer(i);
+  const row = state.rows[i];
+  if (!row || isDone(row) || !row.packing) return;
+  const timer = setTimeout(() => {
+    retryTimers.delete(i);
+    if (row.packing && !isDone(row)) {
+      fillRow(i);
+    }
+  }, delayMs);
+  retryTimers.set(i, timer);
+}
+
 const currentPackSaved = new Set();
 
 async function fillRow(i) {
-  clearRetryTimer();
-  if (filling) {
-    status('Still filling the last one — one moment.');
-    return;
-  }
+  clearRetryTimer(i);
   const row = state.rows[i];
+  if (!row) return;
   if (isDone(row)) {
     status('Already packed. Use the ✓ to undo.');
+    return;
+  }
+  if (filling) {
+    if (row.packing && !isDone(row)) {
+      scheduleRetry(i, 1000);
+    }
+    status('Still filling the last one — one moment.');
     return;
   }
   const value = state.fillMode === 'seller' ? row.sellerSku : row.myntraSku;
@@ -221,7 +245,6 @@ async function fillRow(i) {
   }
 
   filling = true;
-  state.activeRowIndex = i;
   row.packing = true;
   render();
 
@@ -235,7 +258,7 @@ async function fillRow(i) {
   // If no pack tab is open
   if (!res?.ok && res?.reason === 'no-tab') {
     delete row.packing;
-    state.activeRowIndex = null;
+    clearRetryTimer(i);
     render();
     status(reasonText(res?.reason), true);
     return;
@@ -245,25 +268,22 @@ async function fillRow(i) {
   if (!res?.ok || !res?.submitted) {
     const why = !res?.ok ? reasonText(res?.reason) : 'Myntra did not clear the box';
     status(`Filled ${value}, but ${why} — retrying in 2s...`, true);
-    retryTimer = setTimeout(() => {
-      if (state.activeRowIndex === i && !isDone(row)) {
-        fillRow(i);
-      }
-    }, 2000);
+    scheduleRetry(i, 2000);
     return;
   }
 
   // Successfully submitted to Myntra
-  clearRetryTimer();
+  clearRetryTimer(i);
 
   // If Autosave is OFF: mark done immediately as fallback
   if (!els.autosave.checked) {
     row.done += 1;
     delete row.packing;
-    state.activeRowIndex = null;
     save();
     render();
-    status(`Packed ${value} (autosave off).`);
+    const sameLeft = state.rows.filter((r, j) => j !== i && r.myntraSku === row.myntraSku && !isDone(r) && !r.packing).length;
+    if (sameLeft > 0) status(`Packed ${value} (autosave off). Same SKU: ${sameLeft} more to go.`);
+    else status(`Packed ${value} (autosave off).`);
     return;
   }
 
@@ -304,12 +324,12 @@ async function fillPicklistId() {
 function resetTicks() {
   clearRetryTimer();
   currentPackSaved.clear();
-  state.activeRowIndex = null;
-  const before = state.rows.map((r) => r.done);
-  if (!before.some((d) => d > 0)) {
+  const hasTicks = state.rows.some((r) => (r.done || 0) > 0 || r.packing);
+  if (!hasTicks) {
     status('Nothing to reset — no rows are ticked.');
     return;
   }
+  const before = state.rows.map((r) => r.done);
   for (const row of state.rows) {
     row.done = 0;
     delete row.packing;
@@ -330,17 +350,18 @@ function resetTicks() {
 }
 
 function undo(i) {
-  clearRetryTimer();
+  clearRetryTimer(i);
   const row = state.rows[i];
+  if (!row) return;
   if (row.packing) {
     delete row.packing;
-    if (state.activeRowIndex === i) state.activeRowIndex = null;
-    currentPackSaved.clear();
+    if (!state.rows.some((r) => r.packing)) currentPackSaved.clear();
     save();
     render();
     status('Cancelled packing for this row.');
     return;
   }
+  clearRetryTimer(i);
   if (row.done === 0) return;
   row.done -= 1;
   save();
@@ -516,21 +537,17 @@ const AUTOSAVE_PROBLEMS = {
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === 'GENIE_ERROR') {
     const sku = msg.sku;
-    clearRetryTimer();
-    let idx = state.activeRowIndex;
-    if (idx == null || !state.rows[idx] || (state.rows[idx].sellerSku !== sku && state.rows[idx].myntraSku !== sku)) {
-      idx = state.rows.findLastIndex((r) => (r.sellerSku === sku || r.myntraSku === sku));
-    }
+    // Find a packing row with this SKU first, then any row with this SKU
+    let idx = state.rows.findIndex((r) => (r.sellerSku === sku || r.myntraSku === sku) && r.packing);
+    if (idx === -1) idx = state.rows.findLastIndex((r) => (r.sellerSku === sku || r.myntraSku === sku));
     if (idx !== -1) {
+      clearRetryTimer(idx);
       state.rows[idx].done = 0;
       state.rows[idx].packing = true;
-      state.activeRowIndex = idx;
       save();
       render();
       status('GENIE error for ' + sku + ' — retrying in 2s...', true);
-      retryTimer = setTimeout(() => {
-        fillRow(idx);
-      }, 2000);
+      scheduleRetry(idx, 2000);
     }
     return;
   }
@@ -558,22 +575,17 @@ chrome.runtime.onMessage.addListener((msg) => {
         currentPackSaved.clear();
         clearRetryTimer();
 
-        let targetIdx = state.activeRowIndex;
-        if (targetIdx == null || !state.rows[targetIdx] || isDone(state.rows[targetIdx])) {
-          targetIdx = state.rows.findIndex((r) => r.packing);
-        }
-        if (targetIdx === -1) {
-          targetIdx = nextIndex();
-        }
-
-        if (targetIdx !== -1) {
-          const targetRow = state.rows[targetIdx];
-          targetRow.done = Math.min(targetRow.qty, (targetRow.done || 0) + 1);
-          delete targetRow.packing;
-          state.activeRowIndex = null;
+        // Mark ALL packing rows as done — a multi-item packet shares one
+        // set of label + invoice across all its items.
+        const packingRows = state.rows.filter((r) => r.packing);
+        if (packingRows.length > 0) {
+          for (const r of packingRows) {
+            r.done = Math.min(r.qty, (r.done || 0) + 1);
+            delete r.packing;
+          }
           save();
           render();
-          status(`Both files saved: ${msg.filename.split('/').pop()} — item packed!`);
+          status(`Both files saved: ${msg.filename.split('/').pop()} — ${packingRows.length} item(s) packed!`);
         } else {
           status(`Both files saved: ${msg.filename.split('/').pop()}`);
         }
