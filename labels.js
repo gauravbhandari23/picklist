@@ -8,8 +8,8 @@
 // exists to suppress, and the packet id can go in the filename.
 
 const ENDPOINTS = [
-  { kind: 'label', re: /\/getShippingLabelForSellerPacket/i },
-  { kind: 'invoice', re: /\/getPacketInvoice/i },
+  { kind: 'label', re: /\/(getShippingLabelForSellerPacket|shipping-label)/i },
+  { kind: 'invoice', re: /\/(getPacketInvoice|invoice(V\d+)?(\?|$|\/))/i },
 ];
 
 export const DOWNLOAD_FOLDER = 'myntra-labels';

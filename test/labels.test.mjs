@@ -18,6 +18,15 @@ const fromBase64 = (s) => new Uint8Array(Buffer.from(s, 'base64'));
   console.log('PASS  both live endpoints recognised, version-independent');
 }
 
+/* 1b. The reprint endpoints */
+{
+  const reprintLabel = 'https://partnersapi.myntrainfo.com/api/mdirect/packets/2297/shipping-labelV2?sellerId=85764&campaignEnriched=false&sellerOrderId=1000226791022';
+  const reprintInvoice = 'https://partnersapi.myntrainfo.com/api/mdirect/packets/2297/invoiceV2?sellerId=85764&campaignEnriched=false&sellerOrderId=1000226791022';
+  assert.equal(classifyLabelUrl(reprintLabel), 'label');
+  assert.equal(classifyLabelUrl(reprintInvoice), 'invoice');
+  console.log('PASS  both reprint endpoints recognised');
+}
+
 /* 2. Everything else must be ignored */
 {
   for (const url of [

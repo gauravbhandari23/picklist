@@ -224,6 +224,9 @@ if (!window.__myntraPicklistPanel) {
   // ── The automation loop (200 ms) ───────────────────────────────────────────
 
   setInterval(() => {
+    const loc = window.location.href || window.location.pathname || '';
+    if (loc && !/PackOrder/i.test(loc)) return;
+
     // Cooldown: enforce a 600ms gap between any automated clicks
     if (Date.now() - localState.lastActionTime < 600) return;
 
@@ -263,7 +266,7 @@ if (!window.__myntraPicklistPanel) {
            return;
         }
         else if (text.includes('technical error') || text.includes('went wrong') || text.includes('failed') || text.includes('try again') || text.includes('timeout')) {
-           if (Date.now() - (localState.clickHistory['ERROR_RETRY'] || 0) < 1000) return;
+           if (Date.now() - (localState.clickHistory['ERROR_RETRY'] || 0) < 2000) return;
            localState.clickHistory['ERROR_RETRY'] = Date.now();
            
            const closeBtn = banner.querySelector('button') || banner.parentElement?.querySelector('button') || banner.parentElement?.parentElement?.querySelector('button');
@@ -362,6 +365,9 @@ if (!window.__myntraPicklistPanel) {
   // way to watch it. Once a second costs nothing.
   let lastSeen = null;
   setInterval(() => {
+    const loc = window.location.href || window.location.pathname || '';
+    if (loc && !/PackOrder/i.test(loc)) return;
+
     const id = findInput(TARGETS.FILL_PICKLIST.hints)?.value?.trim() || null;
     if (id === lastSeen) return;
     lastSeen = id;

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Myntra Picklist Panel",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Shows the picklist beside the Myntra pack page. Click a row to fill the SKU.",
   "permissions": [
     "sidePanel",
@@ -32,7 +32,7 @@
   "content_scripts": [
     {
       "matches": [
-        "*://mdirect.myntrainfo.com/PackOrder/*"
+        "*://mdirect.myntrainfo.com/*"
       ],
       "js": [
         "content.js"
@@ -41,7 +41,7 @@
     },
     {
       "matches": [
-        "*://mdirect.myntrainfo.com/PackOrder/*"
+        "*://mdirect.myntrainfo.com/*"
       ],
       "js": [
         "inject.js"

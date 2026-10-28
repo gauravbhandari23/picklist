@@ -232,3 +232,12 @@ button.icon {
   font-size: 10px;
   color: var(--text);
 }
+
+.row.packing {
+  background: var(--card);
+  border-left: 3px solid var(--brand);
+}
+.row.packing .tick {
+  border-color: var(--brand);
+  color: var(--brand);
+}

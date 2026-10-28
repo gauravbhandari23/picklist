@@ -25,7 +25,7 @@
   // Stamped so the console says which build a tab is actually running. A tab
   // that was not reloaded keeps the previous inject.js, and the symptom — some
   // log lines present, others missing — is otherwise very hard to read.
-  const BUILD = '2026-09-28a quiet';
+  const BUILD = '2026-10-28 reprint';
 
   const startedAt = Date.now();
   // Cross-origin frames can make either of these throw. Nothing here is worth
@@ -52,7 +52,8 @@
   };
   say('build', BUILD, '— watching for label requests. autosave starts OFF until the panel says otherwise');
 
-  const LABEL_RE = /getShippingLabelForSellerPacket|getPacketInvoice/i;
+  const LABEL_RE = /getShippingLabelForSellerPacket|getPacketInvoice|shipping-label|\/invoice(V\d+)?(\?|$|\/)/i;
+  const isReprintUrl = (u) => /shipping-label|\/invoice/i.test(u);
   const PACKET_RE = /ready-to-ship/i;
   const PRINT_GRACE_MS = 20_000;
 
@@ -132,6 +133,9 @@
     if (hit) {
       idMatched = true;
       return { ...hit, matched: true };
+    }
+    if (isReprintUrl(url) && id) {
+      return { packetId: id, orderId: id, matched: true };
     }
     if (!idMatched && lastPacket && Date.now() - lastPacket.at < FALLBACK_MS) {
       say('no packet matched order', id, '— naming it after the packet just packed,', lastPacket.packetId);

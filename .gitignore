@@ -1,2 +1,6 @@
 .DS_Store
 node_modules/
+page2_items.json
+parse_test.js
+parse_test.mjs
+python_pdf_dump.txt

@@ -10,6 +10,8 @@ import { repaginate, SHEETS } from './repaginate.js';
 
 const PACK_URL = '*://mdirect.myntrainfo.com/PackOrder/*';
 const PACK_PATTERN = /^https?:\/\/mdirect\.myntrainfo\.com\/PackOrder\//i;
+const MDIRECT_URL = '*://mdirect.myntrainfo.com/*';
+const MDIRECT_PATTERN = /^https?:\/\/mdirect\.myntrainfo\.com\//i;
 const FILL_TYPES = new Set(['FILL', 'FILL_PICKLIST']);
 // Only long enough to ignore the same response being reported twice, which
 // happens within milliseconds. A whole minute would silently swallow a
@@ -40,7 +42,7 @@ function syncAutosaveFlag({ fresh = false } = {}) {
       }
       if (autosave === true && !registered) {
         await chrome.scripting.registerContentScripts([
-          { id: FLAG_SCRIPT_ID, matches: [PACK_URL], js: ['autosave-flag.js'], runAt: 'document_start', world: 'MAIN', persistAcrossSessions: true },
+          { id: FLAG_SCRIPT_ID, matches: [MDIRECT_URL], js: ['autosave-flag.js'], runAt: 'document_start', world: 'MAIN', persistAcrossSessions: true },
         ]);
       } else if (autosave !== true && registered) {
         await chrome.scripting.unregisterContentScripts({ ids: [FLAG_SCRIPT_ID] });
@@ -157,7 +159,7 @@ async function ensureScripts(tabId) {
 
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   const url = info.url ?? tab?.url ?? '';
-  if (!PACK_PATTERN.test(url)) return;
+  if (!MDIRECT_PATTERN.test(url)) return;
   if (info.url || info.status === 'complete') ensureScripts(tabId);
 });
 
@@ -180,7 +182,7 @@ const tellPanel = (detail) => chrome.runtime.sendMessage(detail).catch(() => {})
 // its own, but it is buried behind chrome://extensions, and this is where
 // anyone debugging is already looking.
 async function tellPage(...parts) {
-  const tabs = await chrome.tabs.query({ url: PACK_URL }).catch(() => []);
+  const tabs = await chrome.tabs.query({ url: MDIRECT_URL }).catch(() => []);
   for (const tab of tabs) {
     chrome.tabs.sendMessage(tab.id, { type: 'DIAG', parts }).catch(() => {});
   }

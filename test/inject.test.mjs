@@ -433,3 +433,25 @@ const fail500 = async () => ({ ok: false, status: 500, statusText: 'err', header
   assert.ok(posted.some((m) => m.type === 'LATE_START'));
   console.log('PASS  a late start (after the page loaded) is reported');
 }
+
+/* 21. Reprint requests are intercepted, recognized, and named after sellerOrderId */
+{
+  const page = makePage();
+  const posted = [];
+  const origPost = page.win.postMessage;
+  page.win.postMessage = (data, origin) => { posted.push(data); origPost(data, origin); };
+  page.win.fetch = async (u) => {
+    return { ok: true, status: 200, headers: { get: () => 'application/pdf' }, clone: () => ({ arrayBuffer: async () => new TextEncoder().encode('%PDF-1.4').buffer }) };
+  };
+  vm.createContext(page.win);
+  page.win.__inner = vm.runInContext('window', page.win);
+  vm.runInContext(source, page.win);
+  await page.win.fetch('https://partnersapi.myntrainfo.com/api/mdirect/packets/2297/shipping-labelV2?sellerId=85764&campaignEnriched=false&sellerOrderId=1000226791022');
+  await page.win.fetch('https://partnersapi.myntrainfo.com/api/mdirect/packets/2297/invoiceV2?sellerId=85764&campaignEnriched=false&sellerOrderId=1000226791022');
+  await new Promise((r) => setTimeout(r, 10));
+  const docs = posted.filter((m) => m.type === 'LABEL_DOC');
+  assert.equal(docs.length, 2, 'both reprint documents captured');
+  assert.equal(docs[0].packet.packetId, '1000226791022');
+  assert.equal(docs[1].packet.packetId, '1000226791022');
+  console.log('PASS  reprint requests are intercepted and named after sellerOrderId');
+}

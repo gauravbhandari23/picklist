@@ -129,12 +129,13 @@ function render() {
     li.className = 'row';
     li.dataset.index = String(i);
     if (isDone(row)) li.classList.add('done');
+    else if (row.packing) li.classList.add('packing');
     else if (i === next) li.classList.add('next');
 
     const tick = document.createElement('button');
     tick.className = 'tick';
-    tick.textContent = isDone(row) ? '✓' : i === next ? '▸' : '';
-    tick.title = row.done > 0 ? 'Undo one' : 'Not packed yet';
+    tick.textContent = isDone(row) ? '✓' : row.packing ? '⏳' : i === next ? '▸' : '';
+    tick.title = isDone(row) ? 'Undo one' : row.packing ? 'Packing in progress (waiting for files)' : 'Not packed yet';
     tick.addEventListener('click', () => undo(i));
 
     const body = document.createElement('button');
@@ -193,8 +194,17 @@ function scrollToNext() {
 // One fill at a time: a double click used to send the SKU twice — scanned
 // twice on Myntra's side and ticked twice here.
 let filling = false;
+let retryTimer = null;
+const clearRetryTimer = () => {
+  if (retryTimer) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+};
+const currentPackSaved = new Set();
 
 async function fillRow(i) {
+  clearRetryTimer();
   if (filling) {
     status('Still filling the last one — one moment.');
     return;
@@ -211,6 +221,10 @@ async function fillRow(i) {
   }
 
   filling = true;
+  state.activeRowIndex = i;
+  row.packing = true;
+  render();
+
   let res;
   try {
     res = await chrome.runtime.sendMessage({ type: 'FILL', value }).catch(() => null);
@@ -218,21 +232,45 @@ async function fillRow(i) {
     filling = false;
   }
 
-  // Tick as soon as the SKU actually went into the box. If we never reached the
-  // page at all, the click did nothing, so ticking would be a lie.
-  if (!res?.ok) {
+  // If no pack tab is open
+  if (!res?.ok && res?.reason === 'no-tab') {
+    delete row.packing;
+    state.activeRowIndex = null;
+    render();
     status(reasonText(res?.reason), true);
     return;
   }
 
-  row.done += 1;
+  // If box was locked, failed, or text not cleared: retry every 2 seconds
+  if (!res?.ok || !res?.submitted) {
+    const why = !res?.ok ? reasonText(res?.reason) : 'Myntra did not clear the box';
+    status(`Filled ${value}, but ${why} — retrying in 2s...`, true);
+    retryTimer = setTimeout(() => {
+      if (state.activeRowIndex === i && !isDone(row)) {
+        fillRow(i);
+      }
+    }, 2000);
+    return;
+  }
+
+  // Successfully submitted to Myntra
+  clearRetryTimer();
+
+  // If Autosave is OFF: mark done immediately as fallback
+  if (!els.autosave.checked) {
+    row.done += 1;
+    delete row.packing;
+    state.activeRowIndex = null;
+    save();
+    render();
+    status(`Packed ${value} (autosave off).`);
+    return;
+  }
+
+  // If Autosave is ON: keep row active at top until both files download
   save();
   render();
-
-  const sameLeft = state.rows.filter((r, j) => j !== i && r.myntraSku === row.myntraSku && !isDone(r)).length;
-  if (!res.submitted) status(`Filled ${value}, but Myntra did not clear the box — check the page.`, true);
-  else if (sameLeft > 0) status(`Same SKU again: ${sameLeft} more to go.`);
-  else status('');
+  status(`Filled ${value}. Waiting for packing & documents...`);
 }
 
 async function fillPicklistId() {
@@ -264,12 +302,18 @@ async function fillPicklistId() {
 // Start the same picklist over. One click rather than a confirm, because the
 // undo below makes a misclick cheap to take back.
 function resetTicks() {
+  clearRetryTimer();
+  currentPackSaved.clear();
+  state.activeRowIndex = null;
   const before = state.rows.map((r) => r.done);
   if (!before.some((d) => d > 0)) {
     status('Nothing to reset — no rows are ticked.');
     return;
   }
-  for (const row of state.rows) row.done = 0;
+  for (const row of state.rows) {
+    row.done = 0;
+    delete row.packing;
+  }
   lastScrolled = null;
   save();
   render();
@@ -286,7 +330,17 @@ function resetTicks() {
 }
 
 function undo(i) {
+  clearRetryTimer();
   const row = state.rows[i];
+  if (row.packing) {
+    delete row.packing;
+    if (state.activeRowIndex === i) state.activeRowIndex = null;
+    currentPackSaved.clear();
+    save();
+    render();
+    status('Cancelled packing for this row.');
+    return;
+  }
   if (row.done === 0) return;
   row.done -= 1;
   save();
@@ -373,6 +427,8 @@ function requestLoad(file) {
 }
 
 function clearAll() {
+  clearRetryTimer();
+  currentPackSaved.clear();
   state = { ...EMPTY, fillMode: state.fillMode, pagePicklistId: state.pagePicklistId };
   save();
   status('');
@@ -460,20 +516,21 @@ const AUTOSAVE_PROBLEMS = {
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.type === 'GENIE_ERROR') {
     const sku = msg.sku;
-    const idx = state.rows.findLastIndex(r => (r.sellerSku === sku || r.myntraSku === sku) && isDone(r));
+    clearRetryTimer();
+    let idx = state.activeRowIndex;
+    if (idx == null || !state.rows[idx] || (state.rows[idx].sellerSku !== sku && state.rows[idx].myntraSku !== sku)) {
+      idx = state.rows.findLastIndex((r) => (r.sellerSku === sku || r.myntraSku === sku));
+    }
     if (idx !== -1) {
       state.rows[idx].done = 0;
+      state.rows[idx].packing = true;
+      state.activeRowIndex = idx;
       save();
       render();
-      status('GENIE error for ' + sku + ' — retrying in 1s...', true);
-      const retry = () => {
-        if (filling) {
-          setTimeout(retry, 1000);
-          return;
-        }
+      status('GENIE error for ' + sku + ' — retrying in 2s...', true);
+      retryTimer = setTimeout(() => {
         fillRow(idx);
-      };
-      setTimeout(retry, 1000);
+      }, 2000);
     }
     return;
   }
@@ -494,8 +551,37 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
   if (msg?.type === 'AUTOSAVE_RESULT') {
     const what = msg.kind === 'invoice' ? 'Bill' : 'Shipping label';
-    if (msg.ok) status(`${what} saved: ${msg.filename.split('/').pop()}`);
-    else {
+    if (msg.ok) {
+      currentPackSaved.add(msg.kind);
+      // Both files (label and invoice) have downloaded!
+      if (currentPackSaved.has('label') && currentPackSaved.has('invoice')) {
+        currentPackSaved.clear();
+        clearRetryTimer();
+
+        let targetIdx = state.activeRowIndex;
+        if (targetIdx == null || !state.rows[targetIdx] || isDone(state.rows[targetIdx])) {
+          targetIdx = state.rows.findIndex((r) => r.packing);
+        }
+        if (targetIdx === -1) {
+          targetIdx = nextIndex();
+        }
+
+        if (targetIdx !== -1) {
+          const targetRow = state.rows[targetIdx];
+          targetRow.done = Math.min(targetRow.qty, (targetRow.done || 0) + 1);
+          delete targetRow.packing;
+          state.activeRowIndex = null;
+          save();
+          render();
+          status(`Both files saved: ${msg.filename.split('/').pop()} — item packed!`);
+        } else {
+          status(`Both files saved: ${msg.filename.split('/').pop()}`);
+        }
+      } else {
+        const remaining = msg.kind === 'invoice' ? 'shipping label' : 'bill';
+        status(`${what} saved: ${msg.filename.split('/').pop()} (waiting for ${remaining}...)`);
+      }
+    } else {
       const why = AUTOSAVE_PROBLEMS[msg.reason] ?? msg.reason;
       const at = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const note = msg.reason === 'late-start' ? why : `${what} not saved. ${why}${msg.detail ? ` (${msg.detail})` : ''}`;
